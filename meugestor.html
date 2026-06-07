@@ -33,6 +33,7 @@ body {
   color: var(--text);
   min-height: 100vh;
   font-size: 14px;
+  overscroll-behavior-y: contain; /* evita pull-to-refresh acidental no mobile */
 }
 
 /* ── LOADING ── */
@@ -418,8 +419,24 @@ main { padding: 24px; max-width: 1400px; margin: 0 auto; }
   /* Tabela de dados */
   .data-table th, .data-table td { padding: 9px 10px; font-size: 12px; }
 
-  /* Oculta floating balance (sobrepõe conteúdo no mobile) */
-  #float-balance { display: none; }
+  /* Floating balance: vira botão compacto no canto inferior direito no mobile */
+  #float-balance {
+    top: auto;
+    bottom: 20px;
+    right: 0;
+    transform: none;
+  }
+  .fb-tab {
+    flex-direction: row;
+    border-radius: 20px 0 0 20px;
+    padding: 10px 14px;
+    gap: 10px;
+    align-items: center;
+  }
+  .fb-label { writing-mode: horizontal-tb; transform: none; font-size: 9px; }
+  .fb-divider { width: 1px; height: 16px; }
+  .fb-amount { writing-mode: horizontal-tb; transform: none; font-size: 15px; }
+  .fb-bar-track { display: none; }
 
   /* Modais */
   #bal-detail-modal { padding: 8px; align-items: flex-start; }
@@ -1750,6 +1767,7 @@ function changeMonth(dir) {
 }
 
 async function refresh() {
+  if (!confirm('Recarregar todos os dados do Coda?\n\nIsso pode demorar alguns segundos.')) return;
   const btn = document.getElementById('refresh-btn');
   btn.classList.add('spinning'); btn.disabled = true;
   try {
