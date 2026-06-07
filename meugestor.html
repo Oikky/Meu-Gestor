@@ -1862,10 +1862,18 @@ function renderInstallmentCards(tableId, rows) {
   const colCurrent = detectCol(tableId, ['parcela atual','atual','corrente']);
   const colTotal   = detectCol(tableId, ['nº de parcelas','num parcelas','total parcelas','parcelas']);
   const colStatus  = detectCol(tableId, ['status','situação','situacao']);
+  const colPago    = detectCol(tableId, ['pago?','pago','quitado','quitada']);
   const colValTot  = detectCol(tableId, ['valor total','total','preco','preço','custo total']);
   const colDataIni = detectCol(tableId, ['data inicial','data inicio','data compra','data de inicio']);
 
   const get = (row, col) => col ? extractValue(row.values?.[col]) : null;
+  // Interpreta a coluna "Pago?" (checkbox true/false ou texto Sim/Não/Pago)
+  const isPaid = v => {
+    if (v === true) return true;
+    if (v === false || v === null || v === undefined || v === '') return false;
+    const s = norm(String(v));
+    return ['sim','true','pago','paga','quitado','quitada','yes','x','✓','1'].includes(s);
+  };
 
   // Agrupa as parcelas pela coluna "Compra" (chave explícita do item).
   // Sem essa coluna, tenta agrupar removendo prefixos "n/m" do nome (ex: "1/12 Geladeira" → "Geladeira").
@@ -1891,7 +1899,9 @@ function renderInstallmentCards(tableId, rows) {
       const dateVal = parseDate(get(row, cm.date));
       const valTot  = parseBRL(get(row, colValTot));
       const dataIni = parseDate(get(row, colDataIni));
-      const done    = norm(String(status)).includes('conclu');
+      // Prioriza a coluna "Pago?" para saber se a parcela já foi quitada;
+      // sem ela, cai para o texto de status (ex: "Concluído")
+      const done    = colPago ? isPaid(get(row, colPago)) : norm(String(status)).includes('conclu');
       const name    = row.name || get(row, cm.description) || '—';
       return { current, total, status, amount, dateVal, valTot, dataIni, done, name };
     });
