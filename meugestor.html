@@ -1689,7 +1689,7 @@ function applyDefaultConfig() {
 }
 
 // ═══════════════════════════════════════════════════
-//  ITEMS VIEW (visão de itens por tabela)
+//  ITEMS VIEW (visão de itens por categoria)
 // ═══════════════════════════════════════════════════
 const ITEMS_CATS = [
   { k:'installment', l:'📦 Parcelados' },
@@ -1702,100 +1702,267 @@ const ITEMS_ACCENT = {
   installment:'var(--purple)', fixed:'var(--orange)', fixedincome:'#06b6d4',
   income:'var(--green)', expense:'var(--red)'
 };
-let itemsActiveCat = null;
+
+// Detecta coluna pelo nome usando keywords
+function detectCol(tableId, keywords) {
+  const cols = S.allCols[tableId] || [];
+  for (const kw of keywords) {
+    const c = cols.find(c => norm(c.name).includes(norm(kw)));
+    if (c) return c.name;
+  }
+  return null;
+}
 
 function showItems() {
   const available = ITEMS_CATS.filter(c => S.mapping[c.k]);
   if (!available.length) { toast('Nenhuma tabela configurada.'); return; }
 
-  const tabs = available.map((c, i) => `
-    <button id="itab-${c.k}" onclick="switchItemsTab('${c.k}')"
+  document.getElementById('items-tabs').innerHTML = available.map(c =>
+    `<button id="itab-${c.k}" onclick="switchItemsTab('${c.k}')"
       style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;
              color:var(--text2);padding:6px 14px;font-size:12px;cursor:pointer;transition:all .15s">
-      ${c.l}
-    </button>`).join('');
-  document.getElementById('items-tabs').innerHTML = tabs;
+      ${c.l}</button>`
+  ).join('');
 
   switchItemsTab(available[0].k);
   document.getElementById('items-modal').style.display = 'flex';
 }
 
 function switchItemsTab(cat) {
-  itemsActiveCat = cat;
   ITEMS_CATS.forEach(c => {
     const btn = document.getElementById(`itab-${c.k}`);
     if (!btn) return;
     const active = c.k === cat;
-    btn.style.background   = active ? ITEMS_ACCENT[c.k] : 'var(--surface2)';
-    btn.style.borderColor  = active ? ITEMS_ACCENT[c.k] : 'var(--border)';
-    btn.style.color        = active ? '#fff' : 'var(--text2)';
-    btn.style.fontWeight   = active ? '600' : '400';
+    btn.style.background  = active ? ITEMS_ACCENT[c.k] : 'var(--surface2)';
+    btn.style.borderColor = active ? ITEMS_ACCENT[c.k] : 'var(--border)';
+    btn.style.color       = active ? '#fff' : 'var(--text2)';
+    btn.style.fontWeight  = active ? '600' : '400';
   });
   renderItemCards(cat);
-}
-
-function formatCell(raw, colType) {
-  const v = extractValue(raw);
-  if (v === null || v === undefined || v === '') return null;
-  const s = String(v).trim();
-  if (!s || s === '0' || s === 'false') return null;
-  if (['currency','number','percent','slider'].includes(colType)) {
-    const n = parseBRL(v);
-    if (!isNaN(n) && n !== 0) return colType === 'currency' ? fmt(n) : String(n);
-  }
-  if (['date','dateTime'].includes(colType)) {
-    const d = parseDate(v);
-    if (d) return d.toLocaleDateString('pt-BR');
-  }
-  if (colType === 'toggle' || typeof v === 'boolean') return v ? 'Sim' : null;
-  // Skip long URLs / base64
-  if (s.startsWith('http') && s.length > 80) return null;
-  if (s.startsWith('data:')) return null;
-  return s.length > 200 ? s.slice(0, 200) + '…' : s;
 }
 
 function renderItemCards(cat) {
   const tableId = S.mapping[cat];
   if (!tableId) return;
-  const rows  = S.rawRows[tableId] || [];
-  const cols  = (S.allCols[tableId] || []).filter(c =>
-    !['image','attachments','canvas','button','_rowOrder'].includes(c.format?.type)
-  );
-  const accent = ITEMS_ACCENT[cat];
-
+  const rows = S.rawRows[tableId] || [];
   if (!rows.length) {
     document.getElementById('items-content').innerHTML =
       '<p style="color:var(--text2);text-align:center;padding:32px">Nenhum item encontrado.</p>';
     return;
   }
 
-  const cards = rows.map(row => {
-    const fields = cols.map(col => {
-      const display = formatCell(row.values?.[col.name], col.format?.type);
-      if (!display) return '';
-      return `<div style="margin-bottom:8px">
-        <div style="font-size:10px;font-weight:600;color:var(--text2);text-transform:uppercase;
-                    letter-spacing:.05em;margin-bottom:2px">${esc(col.name)}</div>
-        <div style="font-size:13px;color:var(--text)">${esc(display)}</div>
-      </div>`;
-    }).filter(Boolean).join('');
+  let html = '';
+  if (cat === 'installment') html = renderInstallmentCards(tableId, rows);
+  else if (cat === 'fixed' || cat === 'fixedincome') html = renderVigenciaCards(tableId, rows, cat);
+  else html = renderTransactionList(tableId, rows, cat);
+
+  document.getElementById('items-content').innerHTML = html;
+}
+
+// ── Parcelados ──
+function renderInstallmentCards(tableId, rows) {
+  const cm = S.colMap[tableId] || {};
+  const colCurrent = detectCol(tableId, ['parcela atual','atual','corrente']);
+  const colTotal   = detectCol(tableId, ['nº de parcelas','num parcelas','total parcelas','parcelas']);
+  const colStatus  = detectCol(tableId, ['status','situação','situacao']);
+  const colValTot  = detectCol(tableId, ['valor total','total','preco','preço','custo total']);
+  const colDataIni = detectCol(tableId, ['data inicial','data inicio','data compra','data de inicio']);
+
+  // Separa ativos e concluídos
+  const sorted = [...rows].sort((a, b) => {
+    const statusA = norm(String(extractValue(a.values?.[colStatus]) || ''));
+    const statusB = norm(String(extractValue(b.values?.[colStatus]) || ''));
+    const doneA = statusA.includes('conclu') ? 1 : 0;
+    const doneB = statusB.includes('conclu') ? 1 : 0;
+    return doneA - doneB;
+  });
+
+  const cards = sorted.map(row => {
+    const get  = col => col ? extractValue(row.values?.[col]) : null;
+    const name      = row.name || get(cm.description) || '—';
+    const catVal    = get(cm.category) || '';
+    const amount    = parseBRL(get(cm.amount));
+    const dateVal   = parseDate(get(cm.date));
+    const current   = parseInt(get(colCurrent)) || null;
+    const total     = parseInt(get(colTotal))   || null;
+    const status    = get(colStatus) || '';
+    const valTot    = parseBRL(get(colValTot));
+    const dataIni   = parseDate(get(colDataIni));
+
+    const done   = norm(String(status)).includes('conclu');
+    const accent = done ? 'var(--text2)' : 'var(--purple)';
+    const pct    = current && total ? Math.min(100, Math.round(current / total * 100)) : null;
+    const payDay = dateVal ? `dia ${dateVal.getDate()}` : null;
+
+    const badge = status ? `<span style="font-size:10px;padding:2px 8px;border-radius:100px;white-space:nowrap;
+      background:${done ? 'rgba(148,163,184,.12)' : 'var(--purple-dim)'};
+      color:${done ? 'var(--text2)' : 'var(--purple)'};font-weight:600">${esc(String(status))}</span>` : '';
+
+    const progress = pct !== null ? `
+      <div style="margin:12px 0 4px">
+        <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text2);margin-bottom:5px">
+          <span>Parcela <strong style="color:var(--text)">${current}</strong> de <strong style="color:var(--text)">${total}</strong></span>
+          <span>${pct}%</span>
+        </div>
+        <div style="height:7px;background:var(--border);border-radius:4px;overflow:hidden">
+          <div style="height:100%;width:${pct}%;background:${accent};border-radius:4px"></div>
+        </div>
+      </div>` : '';
 
     return `
       <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);
-                  padding:0;overflow:hidden;display:flex;flex-direction:column">
+                  overflow:hidden;${done ? 'opacity:.6' : ''}">
         <div style="height:3px;background:${accent}"></div>
-        <div style="padding:14px 16px;flex:1">
-          <div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:12px;
-                      line-height:1.3">${esc(row.name || '—')}</div>
-          ${fields || '<span style="color:var(--text2);font-size:12px">Sem campos preenchidos</span>'}
+        <div style="padding:14px 16px">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+            <div style="font-size:14px;font-weight:700;line-height:1.3;flex:1">${esc(name)}</div>
+            ${badge}
+          </div>
+          ${catVal ? `<div style="font-size:11px;color:var(--text2);margin-top:4px">${esc(catVal)}</div>` : ''}
+          ${progress}
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:${pct!==null?'10':'14'}px">
+            ${amount ? `<div>
+              <div style="font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px">Por parcela</div>
+              <div style="font-size:16px;font-weight:700;color:${done?'var(--text2)':'var(--purple)'}">${fmt(amount)}</div>
+            </div>` : ''}
+            ${payDay ? `<div>
+              <div style="font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px">Vencimento</div>
+              <div style="font-size:14px;font-weight:600">${payDay}</div>
+            </div>` : ''}
+            ${valTot ? `<div>
+              <div style="font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px">Total</div>
+              <div style="font-size:13px">${fmt(valTot)}</div>
+            </div>` : ''}
+            ${dataIni ? `<div>
+              <div style="font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px">Início</div>
+              <div style="font-size:13px">${dataIni.toLocaleDateString('pt-BR')}</div>
+            </div>` : ''}
+          </div>
         </div>
       </div>`;
   }).join('');
 
-  document.getElementById('items-content').innerHTML = `
-    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px">
-      ${cards}
+  return `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px">${cards}</div>`;
+}
+
+// ── Gastos Fixos / Ganhos Fixos (vigência) ──
+function renderVigenciaCards(tableId, rows, cat) {
+  const cm     = S.colMap[tableId] || {};
+  const accent = ITEMS_ACCENT[cat];
+  const now    = new Date();
+  const fmtMes = d => d ? `${MONTHS_PT[d.getMonth()].slice(0,3)}/${d.getFullYear()}` : '∞';
+
+  const sorted = [...rows].sort((a, b) => {
+    const get  = row => ({ startDate: parseDate(extractValue(row.values?.[cm.startDate])), endDate: parseDate(extractValue(row.values?.[cm.endDate])) });
+    const actA = isActiveInMonth(get(a), now.getFullYear(), now.getMonth()) ? 0 : 1;
+    const actB = isActiveInMonth(get(b), now.getFullYear(), now.getMonth()) ? 0 : 1;
+    return actA - actB;
+  });
+
+  const cards = sorted.map(row => {
+    const get       = col => col ? extractValue(row.values?.[col]) : null;
+    const name      = row.name || get(cm.description) || '—';
+    const catVal    = get(cm.category) || '';
+    const amount    = parseBRL(get(cm.amount));
+    const dateVal   = parseDate(get(cm.date));
+    const startDate = parseDate(get(cm.startDate));
+    const endDate   = parseDate(get(cm.endDate));
+    const active    = isActiveInMonth({ startDate, endDate }, now.getFullYear(), now.getMonth());
+    const payDay    = dateVal ? `dia ${dateVal.getDate()}` : '—';
+
+    const badge = `<span style="font-size:10px;padding:2px 8px;border-radius:100px;white-space:nowrap;
+      background:${active ? (cat==='fixed' ? 'var(--orange-dim)' : 'rgba(6,182,212,.12)') : 'rgba(148,163,184,.1)'};
+      color:${active ? accent : 'var(--text2)'};font-weight:600">${active ? 'Ativo' : 'Inativo'}</span>`;
+
+    return `
+      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);
+                  overflow:hidden;${!active ? 'opacity:.55' : ''}">
+        <div style="height:3px;background:${active ? accent : 'var(--border)'}"></div>
+        <div style="padding:14px 16px">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:4px">
+            <div style="font-size:14px;font-weight:700;line-height:1.3;flex:1">${esc(name)}</div>
+            ${badge}
+          </div>
+          ${catVal ? `<div style="font-size:11px;color:var(--text2);margin-bottom:12px">${esc(catVal)}</div>` : '<div style="margin-bottom:12px"></div>'}
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+            ${amount ? `<div>
+              <div style="font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px">Por mês</div>
+              <div style="font-size:18px;font-weight:700;color:${active ? accent : 'var(--text2)'}">${fmt(amount)}</div>
+            </div>` : ''}
+            <div>
+              <div style="font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px">Pagamento</div>
+              <div style="font-size:14px;font-weight:600">${payDay}</div>
+            </div>
+            <div style="grid-column:1/-1">
+              <div style="font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px">Vigência</div>
+              <div style="font-size:12px">${fmtMes(startDate)} → ${fmtMes(endDate)}</div>
+            </div>
+          </div>
+        </div>
+      </div>`;
+  }).join('');
+
+  return `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px">${cards}</div>`;
+}
+
+// ── Entradas / Saídas Variáveis ──
+function renderTransactionList(tableId, rows, cat) {
+  const cm     = S.colMap[tableId] || {};
+  const accent = ITEMS_ACCENT[cat];
+  const sign   = cat === 'income' ? '+' : '−';
+
+  // Agrupa por categoria
+  const groups = {};
+  let grandTotal = 0;
+  for (const row of rows) {
+    const get    = col => col ? extractValue(row.values?.[col]) : null;
+    const catVal = get(cm.category) || '(sem categoria)';
+    const amount = parseBRL(get(cm.amount));
+    const date   = parseDate(get(cm.date));
+    const desc   = String(get(cm.description) || row.name || '—');
+    if (!groups[catVal]) groups[catVal] = { items: [], total: 0 };
+    groups[catVal].items.push({ desc, amount, date });
+    groups[catVal].total += amount;
+    grandTotal += amount;
+  }
+
+  const sections = Object.entries(groups)
+    .sort((a,b) => b[1].total - a[1].total)
+    .map(([catLabel, g]) => {
+      const pct = grandTotal > 0 ? Math.round(g.total / grandTotal * 100) : 0;
+      const itemRows = [...g.items]
+        .sort((a,b) => (b.date||0) - (a.date||0))
+        .map(t => `
+          <div style="display:flex;justify-content:space-between;align-items:center;
+                      padding:8px 0;border-bottom:1px solid var(--border)">
+            <div>
+              <div style="font-size:13px">${esc(t.desc)}</div>
+              ${t.date ? `<div style="font-size:11px;color:var(--text2)">${t.date.toLocaleDateString('pt-BR')}</div>` : ''}
+            </div>
+            <div style="font-size:13px;font-weight:600;color:${accent};white-space:nowrap;margin-left:12px">${sign} ${fmt(t.amount)}</div>
+          </div>`).join('');
+
+      return `
+        <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-bottom:12px">
+          <div style="padding:12px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
+            <div>
+              <div style="font-size:13px;font-weight:700">${esc(catLabel)}</div>
+              <div style="font-size:11px;color:var(--text2)">${g.items.length} lançamento${g.items.length!==1?'s':''} · ${pct}% do total</div>
+            </div>
+            <div style="font-size:16px;font-weight:700;color:${accent}">${fmt(g.total)}</div>
+          </div>
+          <div style="padding:0 16px">${itemRows}</div>
+        </div>`;
+    }).join('');
+
+  const header = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;
+                padding:12px 16px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius)">
+      <div style="font-size:12px;color:var(--text2)">${rows.length} lançamentos no total</div>
+      <div style="font-size:18px;font-weight:700;color:${accent}">${sign} ${fmt(grandTotal)}</div>
     </div>`;
+
+  return header + sections;
 }
 
 // ═══════════════════════════════════════════════════
