@@ -894,11 +894,11 @@ const BASE    = 'https://coda.io/apis/v1';
 //  PRÉ-CONFIGURAÇÃO PADRÃO (tabelas e colunas do Coda)
 // ═══════════════════════════════════════════════════
 const DEFAULT_CONFIG = {
-  income:      { tableName: 'Tabela de Ganhos',                     cols: { amount:'Valor Ganho',  date:'Data',               description:'Descrição', category:'Tipo',      filterCategory:'Variável' } },
-  fixedincome: { tableName: 'Tabela: Ganhos Fixos',                 cols: { amount:'Valor Mensal', date:'Data de Pagamento',   description:'Ganho',     category:'Fonte',     startDate:'Iniciado', endDate:'Finalizado' } },
-  expense:     { tableName: 'Tabela de Gastos',                     cols: { amount:'Valor',        date:'Data',               description:'Descrição', category:'Tipo',      filterCategory:'Variável' } },
-  fixed:       { tableName: 'Tabela: Gastos Fixos',                 cols: { amount:'Valor Mensal', date:'Data de Vencimento',  description:'Despesa',   category:'Categoria', startDate:'Iniciado', endDate:'Finalizado' } },
-  installment: { tableName: 'Tabela: Parcelas Controle Individual', cols: { amount:'Valor',        date:'Data de Vencimento',  description:'Descrição', category:'Categoria' } },
+  income:      { tableName: '💰 Tabela de Ganhos',                          cols: { amount:'Valor Ganho',  date:'Data',               description:'Descrição', category:'Tipo',      filterCategory:'Variável' } },
+  fixedincome: { tableName: '🧱 Tabela: Ganhos Fixos',                      cols: { amount:'Valor Mensal', date:'Data de Pagamento',   description:'Ganho',     category:'Fonte',     startDate:'Iniciado', endDate:'Finalizado' } },
+  expense:     { tableName: '🧾 Tabela de Gastos',                          cols: { amount:'Valor',        date:'Data',               description:'Descrição', category:'Tipo',      filterCategory:'Variável' } },
+  fixed:       { tableName: '🧱 Tabela: Gastos Fixos',                      cols: { amount:'Valor Mensal', date:'Data de Vencimento',  description:'Despesa',   category:'Categoria', startDate:'Iniciado', endDate:'Finalizado' } },
+  installment: { tableName: '📅 2️⃣ Tabela: Parcelas Controle Individual',   cols: { amount:'Valor',        date:'Data de Vencimento',  description:'Descrição', category:'Categoria' } },
 };
 
 const MONTHS_PT = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho',
@@ -1935,9 +1935,11 @@ function applyDefaultConfig() {
   const mapping = { income:null, fixedincome:null, expense:null, fixed:null, installment:null };
   const colMap  = {};
   for (const [cat, cfg] of Object.entries(DEFAULT_CONFIG)) {
-    // Tenta match exato primeiro, depois normalizado (sem acento, sem case)
+    // Tenta match exato → normalizado (sem acento/case) → sem emojis/símbolos (mais tolerante)
+    const stripDeco = s => norm(s).replace(/[^\p{L}\p{N}\s:]/gu, '').replace(/\s+/g, ' ').trim();
     let tbl = S.tables.find(t => t.name === cfg.tableName)
-           || S.tables.find(t => norm(t.name) === norm(cfg.tableName));
+           || S.tables.find(t => norm(t.name) === norm(cfg.tableName))
+           || S.tables.find(t => stripDeco(t.name) === stripDeco(cfg.tableName));
     if (tbl) {
       mapping[cat] = tbl.id;
       colMap[tbl.id] = { ...cfg.cols };
@@ -2930,17 +2932,4 @@ async function init() {
         }
       } catch (e2) {
         showError('Documento inacessível',
-          `O doc ID "${DOC_ID}" não foi encontrado ou a API Key não tem acesso a ele. Verifique se a key foi gerada na mesma conta Coda onde está o documento.`,
-          `Erro original: ${msg}`);
-      }
-      return;
-    }
-
-    showError(title, text, details);
-  }
-}
-
-init();
-</script>
-</body>
-</html>
+          `O doc ID "${DOC_ID}" não foi encontrado ou a API 
