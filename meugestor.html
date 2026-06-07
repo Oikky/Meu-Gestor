@@ -2245,10 +2245,17 @@ function renderVigenciaCards(tableId, rows, cat) {
   const pagarColId = colPagar ? colId(tableId, colPagar) : null;
 
   const sorted = [...rows].sort((a, b) => {
-    const get  = row => ({ startDate: parseDate(extractValue(row.values?.[cm.startDate])), endDate: parseDate(extractValue(row.values?.[cm.endDate])) });
-    const actA = isActiveInMonth(get(a), now.getFullYear(), now.getMonth()) ? 0 : 1;
-    const actB = isActiveInMonth(get(b), now.getFullYear(), now.getMonth()) ? 0 : 1;
-    return actA - actB;
+    const get  = row => ({
+      startDate: parseDate(extractValue(row.values?.[cm.startDate])),
+      endDate:   parseDate(extractValue(row.values?.[cm.endDate])),
+      payDay:    parseDate(extractValue(row.values?.[cm.date]))?.getDate() ?? 99
+    });
+    const ga = get(a), gb = get(b);
+    const actA = isActiveInMonth(ga, now.getFullYear(), now.getMonth()) ? 0 : 1;
+    const actB = isActiveInMonth(gb, now.getFullYear(), now.getMonth()) ? 0 : 1;
+    if (actA !== actB) return actA - actB;
+    // Dentro do mesmo grupo (ativo/inativo), ordena pelo dia do mês de pagamento
+    return ga.payDay - gb.payDay;
   });
 
   const cards = sorted.map((row, idx) => {
