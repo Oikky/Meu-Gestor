@@ -2932,4 +2932,17 @@ async function init() {
         }
       } catch (e2) {
         showError('Documento inacessível',
-          `O doc ID "${DOC_ID}" não foi encontrado ou a API 
+          `O doc ID "${DOC_ID}" não foi encontrado ou a API Key não tem acesso a ele. Verifique se a key foi gerada na mesma conta Coda onde está o documento.`,
+          `Erro original: ${msg}`);
+      }
+      return;
+    }
+
+    showError(title, text, details);
+  }
+}
+
+init();
+</script>
+</body>
+</html>
