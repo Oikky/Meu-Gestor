@@ -230,6 +230,17 @@ header {
 .inst-filter-tab:hover:not(.active) { color: var(--text); border-color: var(--purple); }
 .inst-filter-tab.active { background: var(--purple); border-color: var(--purple); color: #fff; font-weight: 600; }
 
+/* Botão "Pagar" — aciona o botão de coluna do Coda direto pelo card */
+.pay-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: var(--green); border: none; border-radius: var(--radius-sm);
+  color: #fff; font-size: 11px; font-weight: 600; padding: 6px 12px;
+  cursor: pointer; transition: filter .15s, transform .1s;
+}
+.pay-btn:hover:not(:disabled) { filter: brightness(1.1); }
+.pay-btn:active:not(:disabled) { transform: scale(.97); }
+.pay-btn:disabled { opacity: .65; cursor: default; }
+
 /* ── MAIN ── */
 main { padding: 24px; max-width: 1400px; margin: 0 auto; }
 
@@ -979,6 +990,42 @@ async function codaPost(path, body) {
 function colId(tableId, colName) {
   if (!colName) return null;
   return (S.allCols[tableId] || []).find(c => c.name === colName)?.id || null;
+}
+
+// Aciona um botão de coluna do Coda (ex: "Pagar") numa linha específica.
+// Endpoint: POST /docs/{docId}/tables/{tableId}/rows/{rowId}/buttons/{columnId}
+async function codaPushButton(tableId, rowId, columnIdOrName) {
+  const r = await fetch(`${BASE}/docs/${DOC_ID}/tables/${tableId}/rows/${encodeURIComponent(rowId)}/buttons/${encodeURIComponent(columnIdOrName)}`, {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${API_KEY}` }
+  });
+  if (!r.ok) {
+    const t = await r.text().catch(() => '');
+    throw new Error(`HTTP ${r.status}: ${t.slice(0, 300)}`);
+  }
+  return r.json();
+}
+
+// Dispara o botão "Pagar" de uma linha (registra o pagamento e avança a próxima data no Coda)
+async function pagarItem(tableId, rowId, btnColId, el) {
+  if (!btnColId) { toast('❌ Botão de pagamento não encontrado nesta tabela.'); return; }
+  if (el) { el.disabled = true; el.dataset.orig = el.innerHTML; el.innerHTML = '⏳ Processando…'; }
+  try {
+    await codaPushButton(tableId, rowId, btnColId);
+    toast('✅ Pagamento registrado! Atualizando dados…');
+    // O botão do Coda dispara uma automação (registra o gasto e avança a data) —
+    // aguarda um instante antes de recarregar para dar tempo da automação rodar.
+    setTimeout(async () => {
+      await fetchAll();
+      updateDashboard();
+      if (currentItemsCat && document.getElementById('items-modal')?.style.display !== 'none') {
+        renderItemCards(currentItemsCat);
+      }
+    }, 2000);
+  } catch (e) {
+    toast(`❌ Erro ao pagar: ${e.message}`);
+    if (el) { el.disabled = false; el.innerHTML = el.dataset.orig || '💸 Pagar'; }
+  }
 }
 
 // ═══════════════════════════════════════════════════
@@ -1916,6 +1963,7 @@ const ITEMS_ACCENT = {
   installment:'var(--purple)', fixed:'var(--orange)', fixedincome:'#06b6d4',
   income:'var(--green)', expense:'var(--red)'
 };
+let currentItemsCat = null; // categoria atualmente exibida no modal de itens (p/ refresh pós-pagamento)
 
 // Detecta coluna pelo nome usando keywords
 function detectCol(tableId, keywords) {
@@ -1943,6 +1991,7 @@ function showItems() {
 }
 
 function switchItemsTab(cat) {
+  currentItemsCat = cat;
   ITEMS_CATS.forEach(c => {
     const btn = document.getElementById(`itab-${c.k}`);
     if (!btn) return;
@@ -1983,6 +2032,8 @@ function renderInstallmentCards(tableId, rows) {
   const colPago    = detectCol(tableId, ['pago?','pago','quitado','quitada']);
   const colValTot  = detectCol(tableId, ['valor total','total','preco','preço','custo total']);
   const colDataIni = detectCol(tableId, ['data inicial','data inicio','data compra','data de inicio']);
+  const colPagar   = detectCol(tableId, ['pagar','registrar pagamento','marcar pagamento','botao pagar','pagar agora']);
+  const pagarColId = colPagar ? colId(tableId, colPagar) : null;
 
   const get = (row, col) => col ? extractValue(row.values?.[col]) : null;
   // Interpreta a coluna "Pago?" (checkbox true/false ou texto Sim/Não/Pago)
@@ -2021,7 +2072,7 @@ function renderInstallmentCards(tableId, rows) {
       // sem ela, cai para o texto de status (ex: "Concluído")
       const done    = colPago ? isPaid(get(row, colPago)) : norm(String(status)).includes('conclu');
       const name    = row.name || get(row, cm.description) || '—';
-      return { current, total, status, amount, dateVal, valTot, dataIni, done, name };
+      return { current, total, status, amount, dateVal, valTot, dataIni, done, name, id: row.id };
     });
 
     // Ordena pelas parcelas (número da parcela, ou data, como critério auxiliar)
@@ -2078,6 +2129,8 @@ function renderInstallmentCards(tableId, rows) {
             ${e.status ? `<span style="font-size:10px;padding:2px 7px;border-radius:100px;white-space:nowrap;
               background:${e.done ? 'rgba(148,163,184,.12)' : 'var(--purple-dim)'};
               color:${e.done ? 'var(--text2)' : 'var(--purple)'}">${esc(String(e.status))}</span>` : ''}
+            ${(isCur && !e.done && pagarColId) ? `<button class="pay-btn"
+              onclick="event.stopPropagation();pagarItem('${tableId}','${e.id}','${pagarColId}',this)">💸 Pagar</button>` : ''}
           </div>
         </div>`;
     }).join('');
@@ -2185,6 +2238,11 @@ function renderVigenciaCards(tableId, rows, cat) {
   const accent = ITEMS_ACCENT[cat];
   const now    = new Date();
   const fmtMes = d => d ? `${MONTHS_PT[d.getMonth()].slice(0,3)}/${d.getFullYear()}` : '∞';
+  // Ganhos Fixos usa o botão "Receber"; Gastos Fixos (e Parcelados) usam "Pagar"
+  const actionKw   = cat === 'fixedincome' ? ['receber','registrar recebimento','marcar recebimento','botao receber'] : ['pagar','registrar pagamento','marcar pagamento','botao pagar','pagar agora'];
+  const actionLbl  = cat === 'fixedincome' ? '💰 Receber' : '💸 Pagar';
+  const colPagar   = detectCol(tableId, actionKw);
+  const pagarColId = colPagar ? colId(tableId, colPagar) : null;
 
   const sorted = [...rows].sort((a, b) => {
     const get  = row => ({ startDate: parseDate(extractValue(row.values?.[cm.startDate])), endDate: parseDate(extractValue(row.values?.[cm.endDate])) });
@@ -2232,6 +2290,10 @@ function renderVigenciaCards(tableId, rows, cat) {
               <div style="font-size:12px">${fmtMes(startDate)} → ${fmtMes(endDate)}</div>
             </div>
           </div>
+          ${(active && pagarColId) ? `<div style="margin-top:12px">
+            <button class="pay-btn" style="width:100%;justify-content:center"
+              onclick="event.stopPropagation();pagarItem('${tableId}','${row.id}','${pagarColId}',this)">${actionLbl}</button>
+          </div>` : ''}
         </div>
       </div>`;
   }).join('');
