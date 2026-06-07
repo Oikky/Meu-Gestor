@@ -524,6 +524,7 @@ main { padding: 24px; max-width: 1400px; margin: 0 auto; }
       <button class="refresh-btn" id="refresh-btn" onclick="refresh()">
         <span class="icon">↻</span> Atualizar
       </button>
+      <button class="config-btn" onclick="showItems()" style="margin-right:6px">📋 itens</button>
       <button class="config-btn" onclick="showDiag()" style="margin-right:6px">🔍 diagnóstico</button>
       <button class="config-btn" onclick="showSetup()">⚙️ configurar</button>
     </div>
@@ -673,6 +674,20 @@ main { padding: 24px; max-width: 1400px; margin: 0 auto; }
 </div>
 
 <div id="toast"></div>
+
+<!-- Items Modal -->
+<div id="items-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.75); z-index:200; align-items:flex-start; justify-content:center; padding:24px 16px; overflow-y:auto;">
+  <div style="background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); width:100%; max-width:1100px;">
+    <div style="display:flex; justify-content:space-between; align-items:center; padding:18px 24px; border-bottom:1px solid var(--border); position:sticky; top:0; background:var(--surface); z-index:1; border-radius:var(--radius) var(--radius) 0 0;">
+      <h3 style="font-size:16px">📋 Visão de Itens</h3>
+      <button onclick="document.getElementById('items-modal').style.display='none'" style="background:none;border:none;color:var(--text2);font-size:20px;cursor:pointer">✕</button>
+    </div>
+    <div style="padding:20px 24px;">
+      <div id="items-tabs" style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:20px"></div>
+      <div id="items-content"></div>
+    </div>
+  </div>
+</div>
 
 <!-- Diagnostic Modal -->
 <div id="diag-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.7); z-index:200; align-items:flex-start; justify-content:center; padding:40px 16px; overflow-y:auto;">
@@ -1671,6 +1686,116 @@ function applyDefaultConfig() {
   S.colMap  = colMap;
   // Retorna true se todas as tabelas foram encontradas
   return Object.values(mapping).every(Boolean);
+}
+
+// ═══════════════════════════════════════════════════
+//  ITEMS VIEW (visão de itens por tabela)
+// ═══════════════════════════════════════════════════
+const ITEMS_CATS = [
+  { k:'installment', l:'📦 Parcelados' },
+  { k:'fixed',       l:'🔒 Gastos Fixos' },
+  { k:'fixedincome', l:'📌 Ganhos Fixos' },
+  { k:'income',      l:'💰 Entradas Var.' },
+  { k:'expense',     l:'💸 Saídas Var.' },
+];
+const ITEMS_ACCENT = {
+  installment:'var(--purple)', fixed:'var(--orange)', fixedincome:'#06b6d4',
+  income:'var(--green)', expense:'var(--red)'
+};
+let itemsActiveCat = null;
+
+function showItems() {
+  const available = ITEMS_CATS.filter(c => S.mapping[c.k]);
+  if (!available.length) { toast('Nenhuma tabela configurada.'); return; }
+
+  const tabs = available.map((c, i) => `
+    <button id="itab-${c.k}" onclick="switchItemsTab('${c.k}')"
+      style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;
+             color:var(--text2);padding:6px 14px;font-size:12px;cursor:pointer;transition:all .15s">
+      ${c.l}
+    </button>`).join('');
+  document.getElementById('items-tabs').innerHTML = tabs;
+
+  switchItemsTab(available[0].k);
+  document.getElementById('items-modal').style.display = 'flex';
+}
+
+function switchItemsTab(cat) {
+  itemsActiveCat = cat;
+  ITEMS_CATS.forEach(c => {
+    const btn = document.getElementById(`itab-${c.k}`);
+    if (!btn) return;
+    const active = c.k === cat;
+    btn.style.background   = active ? ITEMS_ACCENT[c.k] : 'var(--surface2)';
+    btn.style.borderColor  = active ? ITEMS_ACCENT[c.k] : 'var(--border)';
+    btn.style.color        = active ? '#fff' : 'var(--text2)';
+    btn.style.fontWeight   = active ? '600' : '400';
+  });
+  renderItemCards(cat);
+}
+
+function formatCell(raw, colType) {
+  const v = extractValue(raw);
+  if (v === null || v === undefined || v === '') return null;
+  const s = String(v).trim();
+  if (!s || s === '0' || s === 'false') return null;
+  if (['currency','number','percent','slider'].includes(colType)) {
+    const n = parseBRL(v);
+    if (!isNaN(n) && n !== 0) return colType === 'currency' ? fmt(n) : String(n);
+  }
+  if (['date','dateTime'].includes(colType)) {
+    const d = parseDate(v);
+    if (d) return d.toLocaleDateString('pt-BR');
+  }
+  if (colType === 'toggle' || typeof v === 'boolean') return v ? 'Sim' : null;
+  // Skip long URLs / base64
+  if (s.startsWith('http') && s.length > 80) return null;
+  if (s.startsWith('data:')) return null;
+  return s.length > 200 ? s.slice(0, 200) + '…' : s;
+}
+
+function renderItemCards(cat) {
+  const tableId = S.mapping[cat];
+  if (!tableId) return;
+  const rows  = S.rawRows[tableId] || [];
+  const cols  = (S.allCols[tableId] || []).filter(c =>
+    !['image','attachments','canvas','button','_rowOrder'].includes(c.format?.type)
+  );
+  const accent = ITEMS_ACCENT[cat];
+
+  if (!rows.length) {
+    document.getElementById('items-content').innerHTML =
+      '<p style="color:var(--text2);text-align:center;padding:32px">Nenhum item encontrado.</p>';
+    return;
+  }
+
+  const cards = rows.map(row => {
+    const fields = cols.map(col => {
+      const display = formatCell(row.values?.[col.name], col.format?.type);
+      if (!display) return '';
+      return `<div style="margin-bottom:8px">
+        <div style="font-size:10px;font-weight:600;color:var(--text2);text-transform:uppercase;
+                    letter-spacing:.05em;margin-bottom:2px">${esc(col.name)}</div>
+        <div style="font-size:13px;color:var(--text)">${esc(display)}</div>
+      </div>`;
+    }).filter(Boolean).join('');
+
+    return `
+      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);
+                  padding:0;overflow:hidden;display:flex;flex-direction:column">
+        <div style="height:3px;background:${accent}"></div>
+        <div style="padding:14px 16px;flex:1">
+          <div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:12px;
+                      line-height:1.3">${esc(row.name || '—')}</div>
+          ${fields || '<span style="color:var(--text2);font-size:12px">Sem campos preenchidos</span>'}
+        </div>
+      </div>`;
+  }).join('');
+
+  document.getElementById('items-content').innerHTML = `
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px">
+      ${cards}
+    </div>`;
 }
 
 // ═══════════════════════════════════════════════════
