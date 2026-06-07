@@ -139,11 +139,56 @@ header {
 .refresh-btn:hover { background: var(--border); }
 .refresh-btn .icon { display: inline-block; }
 .refresh-btn.spinning .icon { animation: spin 0.6s linear infinite; }
-.config-btn {
-  background: none; border: none; color: var(--text2);
-  font-size: 12px; cursor: pointer; text-decoration: underline; padding: 0;
+.menu-btn {
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); color: var(--text);
+  width: 38px; height: 38px; font-size: 17px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: background 0.15s, border-color 0.15s;
 }
-.config-btn:hover { color: var(--text); }
+.menu-btn:hover { background: var(--border); border-color: var(--purple); }
+
+/* ── MENU LATERAL ── */
+#menu-overlay {
+  display: none; position: fixed; inset: 0; background: rgba(0,0,0,.5);
+  z-index: 240;
+}
+#side-menu {
+  position: fixed; top: 0; right: 0; height: 100vh; width: 280px; max-width: 85vw;
+  background: var(--surface); border-left: 1px solid var(--border);
+  z-index: 250; transform: translateX(100%); transition: transform .25s ease;
+  display: flex; flex-direction: column; padding: 20px 16px 16px;
+  box-shadow: -12px 0 36px rgba(0,0,0,.45);
+}
+#side-menu.open { transform: translateX(0); }
+.side-menu-title {
+  font-size: 16px; font-weight: 700; margin-bottom: 18px;
+  display: flex; justify-content: space-between; align-items: center;
+}
+.side-menu-title button {
+  background: none; border: none; color: var(--text2);
+  font-size: 20px; cursor: pointer; line-height: 1; padding: 4px;
+}
+.side-menu-title button:hover { color: var(--text); }
+.side-menu-section { font-size: 11px; font-weight: 600; color: var(--text2);
+  text-transform: uppercase; letter-spacing: .06em; margin: 14px 0 8px; }
+.side-menu-section:first-of-type { margin-top: 0; }
+.side-menu-item {
+  display: flex; align-items: center; gap: 12px; width: 100%; text-align: left;
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); color: var(--text);
+  padding: 12px 14px; font-size: 14px; cursor: pointer;
+  margin-bottom: 8px; transition: border-color .15s, background .15s, transform .1s;
+}
+.side-menu-item:hover { border-color: var(--purple); background: var(--purple-dim); }
+.side-menu-item:active { transform: scale(.98); }
+.side-menu-item .ico { font-size: 17px; width: 22px; text-align: center; flex-shrink: 0; }
+.side-menu-item .lbl { display: flex; flex-direction: column; gap: 1px; }
+.side-menu-item .sub { font-size: 11px; color: var(--text2); font-weight: 400; }
+.side-menu-footer {
+  margin-top: auto; padding-top: 14px; border-top: 1px solid var(--border);
+  color: var(--text2); font-size: 12px; text-align: center;
+}
 
 /* ── MAIN ── */
 main { padding: 24px; max-width: 1400px; margin: 0 auto; }
@@ -387,7 +432,8 @@ main { padding: 24px; max-width: 1400px; margin: 0 auto; }
   .header-right { order: 2; gap: 6px; margin-left: auto; }
   .last-updated { display: none; }
   .refresh-btn { font-size: 12px; padding: 5px 10px; }
-  .config-btn { font-size: 11px; }
+  .menu-btn { width: 34px; height: 34px; font-size: 15px; }
+  #side-menu { width: 100%; max-width: 100vw; }
 
   /* Main */
   main { padding: 12px; }
@@ -531,13 +577,43 @@ main { padding: 24px; max-width: 1400px; margin: 0 auto; }
       <button class="refresh-btn" id="refresh-btn" onclick="refresh()">
         <span class="icon">↻</span> Atualizar
       </button>
-      <button class="config-btn" onclick="showAdd()"   style="margin-right:6px">➕ adicionar</button>
-      <button class="config-btn" onclick="showSim()"   style="margin-right:6px">🔮 simular</button>
-      <button class="config-btn" onclick="showItems()" style="margin-right:6px">📋 itens</button>
-      <button class="config-btn" onclick="showDiag()" style="margin-right:6px">🔍 diagnóstico</button>
-      <button class="config-btn" onclick="showSetup()">⚙️ configurar</button>
+      <button class="menu-btn" onclick="openMenu()" title="Menu">☰</button>
     </div>
   </header>
+
+  <div id="menu-overlay" onclick="closeMenu()"></div>
+  <div id="side-menu">
+    <div class="side-menu-title">
+      <span>Menu</span>
+      <button onclick="closeMenu()" title="Fechar">✕</button>
+    </div>
+
+    <div class="side-menu-section">Lançamentos</div>
+    <button class="side-menu-item" onclick="closeMenu(); showAdd()">
+      <span class="ico">➕</span>
+      <span class="lbl">Adicionar<span class="sub">Novo lançamento na Coda</span></span>
+    </button>
+    <button class="side-menu-item" onclick="closeMenu(); showSim()">
+      <span class="ico">🔮</span>
+      <span class="lbl">Simular<span class="sub">Cenários hipotéticos (what-if)</span></span>
+    </button>
+    <button class="side-menu-item" onclick="closeMenu(); showItems()">
+      <span class="ico">📋</span>
+      <span class="lbl">Itens<span class="sub">Ver por categoria</span></span>
+    </button>
+
+    <div class="side-menu-section">Sistema</div>
+    <button class="side-menu-item" onclick="closeMenu(); showDiag()">
+      <span class="ico">🔍</span>
+      <span class="lbl">Diagnóstico<span class="sub">Inspecionar dados das tabelas</span></span>
+    </button>
+    <button class="side-menu-item" onclick="closeMenu(); showSetup()">
+      <span class="ico">⚙️</span>
+      <span class="lbl">Configurar<span class="sub">Tabelas e colunas</span></span>
+    </button>
+
+    <div class="side-menu-footer" id="last-updated-side">Meu Gestor</div>
+  </div>
 
   <main>
     <!-- KPIs -->
@@ -2560,8 +2636,23 @@ async function fetchAll() {
     }
   }
   S.lastUpdated = new Date();
+  const txt = `atualizado às ${S.lastUpdated.toLocaleTimeString('pt-BR')}`;
   const el = document.getElementById('last-updated');
-  if (el) el.textContent = `atualizado às ${S.lastUpdated.toLocaleTimeString('pt-BR')}`;
+  if (el) el.textContent = txt;
+  const elSide = document.getElementById('last-updated-side');
+  if (elSide) elSide.textContent = txt;
+}
+
+// ── Menu lateral ──
+function openMenu() {
+  document.getElementById('side-menu')?.classList.add('open');
+  const ov = document.getElementById('menu-overlay');
+  if (ov) ov.style.display = 'block';
+}
+function closeMenu() {
+  document.getElementById('side-menu')?.classList.remove('open');
+  const ov = document.getElementById('menu-overlay');
+  if (ov) ov.style.display = 'none';
 }
 
 // ═══════════════════════════════════════════════════
