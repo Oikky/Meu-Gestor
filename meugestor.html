@@ -458,8 +458,8 @@ main { padding: 24px; max-width: 1400px; margin: 0 auto; }
   <div class="setup-card">
     <h2>⚙️ Configurar Tabelas</h2>
     <p class="subtitle">
-      Associe suas tabelas do Coda às categorias financeiras.<br>
-      O dashboard já tentou detectar automaticamente — confirme ou ajuste abaixo.
+      Primeira vez neste dispositivo — selecione as tabelas e clique em <strong>Salvar</strong>.<br>
+      As colunas já estão pré-preenchidas. Isso só acontece uma vez por dispositivo.
     </p>
 
     <div class="setup-group">
@@ -1434,14 +1434,15 @@ function buildColConfig() {
       </div>
     </div>`;
 
-    // pre-select after render
+    // pre-select após render: usa colMap salvo → DEFAULT_CONFIG → autodetect
+    const defCols = DEFAULT_CONFIG[k]?.cols || {};
     setTimeout(() => {
       for (const role of ['amount','date','description','category','startDate','endDate']) {
         const el = document.getElementById(`col-${k}-${role}`);
-        if (el && cm[role]) el.value = cm[role];
+        if (el) el.value = cm[role] || defCols[role] || '';
       }
       const filterEl = document.getElementById(`col-${k}-filter`);
-      if (filterEl && cm.filterCategory) filterEl.value = cm.filterCategory;
+      if (filterEl) filterEl.value = cm.filterCategory || defCols.filterCategory || '';
     }, 0);
   }
 
@@ -1641,7 +1642,9 @@ function applyDefaultConfig() {
   const mapping = { income:null, fixedincome:null, expense:null, fixed:null, installment:null };
   const colMap  = {};
   for (const [cat, cfg] of Object.entries(DEFAULT_CONFIG)) {
-    const tbl = S.tables.find(t => t.name === cfg.tableName);
+    // Tenta match exato primeiro, depois normalizado (sem acento, sem case)
+    let tbl = S.tables.find(t => t.name === cfg.tableName)
+           || S.tables.find(t => norm(t.name) === norm(cfg.tableName));
     if (tbl) {
       mapping[cat] = tbl.id;
       colMap[tbl.id] = { ...cfg.cols };
@@ -1649,6 +1652,8 @@ function applyDefaultConfig() {
   }
   S.mapping = mapping;
   S.colMap  = colMap;
+  // Retorna true se todas as tabelas foram encontradas
+  return Object.values(mapping).every(Boolean);
 }
 
 // ═══════════════════════════════════════════════════
@@ -1793,13 +1798,20 @@ async function init() {
     const restored = loadConfig();
 
     if (!restored) {
-      // 2. Sem configuração salva → aplica pré-configuração e vai direto ao dashboard
-      applyDefaultConfig();
-      setMsg('Carregando seus dados...');
-      await fetchAll();
-      saveConfig(); // salva para próximas visitas
-      show('dashboard');
-      updateDashboard();
+      // 2. Sem configuração salva → tenta pré-configuração automática
+      const allFound = applyDefaultConfig();
+      if (allFound) {
+        // Todas as tabelas foram encontradas → vai direto ao dashboard
+        setMsg('Carregando seus dados...');
+        await fetchAll();
+        saveConfig();
+        show('dashboard');
+        updateDashboard();
+      } else {
+        // Alguma tabela não encontrada → mostra setup pré-preenchido (só clicar em Salvar)
+        show('setup-screen');
+        populateSetup();
+      }
       return;
     }
 
