@@ -720,7 +720,7 @@ main { padding: 24px; max-width: 1400px; margin: 0 auto; }
         <div class="kpi-value" id="kpi-bal-month">—</div>
         <div class="kpi-sub"   id="kpi-bal-month-sub">entradas − saídas</div>
       </div>
-      <div class="kpi-card bal-cum pos" id="kpi-balance-card">
+      <div class="kpi-card bal-cum pos clickable" id="kpi-balance-card" onclick="setChartView('cumBalance')">
         <div class="kpi-label">✅ Saldo Acumulado</div>
         <div class="kpi-value" id="kpi-balance">—</div>
         <div class="kpi-sub" style="margin-top:4px">desde o início</div>
@@ -937,7 +937,7 @@ const S = {
   charts:      { main: null, donut: null },
   lastUpdated: null,
   chartRange:  { months: 6, offset: 0 },
-  chartView:   'all', // 'all' | 'income' | 'fixedincome' | 'expense' | 'fixed' | 'installment' | 'balance'
+  chartView:   'all', // 'all' | 'income' | 'fixedincome' | 'expense' | 'fixed' | 'installment' | 'balance' | 'cumBalance'
   sim:         { items: [] }, // itens hipotéticos (simulação local, não salva no Coda)
 };
 
@@ -1335,11 +1335,21 @@ function getHistory(months, offset) {
   // "end" of window is current month + offset
   const endBase = new Date(now.getFullYear(), now.getMonth() + offset, 1);
   const nowMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+  // Saldo acumulado: parte do total acumulado até o mês anterior ao primeiro
+  // exibido na janela e vai somando o saldo de cada mês — evita recalcular
+  // o histórico inteiro a cada barra (mesmo resultado de calcCumulativeBalance,
+  // só que de forma incremental)
+  const firstMonth  = new Date(endBase.getFullYear(), endBase.getMonth() - (months - 1), 1);
+  const monthBefore = new Date(firstMonth.getFullYear(), firstMonth.getMonth() - 1, 1);
+  let runningCum = calcCumulativeBalance(monthBefore.getFullYear(), monthBefore.getMonth());
+
   return Array.from({length: months}, (_,i) => {
     const d = new Date(endBase.getFullYear(), endBase.getMonth() - (months-1-i), 1);
     const isFuture = d > nowMonth;
     const data = getMonthData(d.getFullYear(), d.getMonth());
     const k    = calcKPIs(data);
+    runningCum += k.balance;
     return {
       label:       MONTHS_PT[d.getMonth()].slice(0,3) + '/' + String(d.getFullYear()).slice(2),
       income:      k.income,
@@ -1350,6 +1360,7 @@ function getHistory(months, offset) {
       installment: k.installment,
       out:         k.totalOut,
       balance:     k.balance,
+      cumBalance:  runningCum,
       isFuture,
     };
   });
@@ -1442,6 +1453,7 @@ const CAT_CFG = {
   fixed:       { label:'🔒 Gastos Fixos',   key:'fixed',       bg:'rgba(245,158,11,0.8)', border:'#f59e0b' },
   installment: { label:'📦 Parcelados',     key:'installment', bg:'rgba(139,92,246,0.8)', border:'#8b5cf6' },
   balance:     { label:'📅 Saldo Mensal',   key:'balance',     bg:'rgba(96,165,250,0.8)', border:'#60a5fa' },
+  cumBalance:  { label:'✅ Saldo Acumulado', key:'cumBalance',  bg:'rgba(16,185,129,0.8)', border:'#10b981' },
 };
 
 function fadeBg(base, isFuture) {
@@ -1459,7 +1471,7 @@ function renderMainChart(history) {
   if (view === 'all') {
     // Grouped: all 5 categories
     datasets = Object.values(CAT_CFG)
-      .filter(c => c.key !== 'balance')
+      .filter(c => c.key !== 'balance' && c.key !== 'cumBalance')
       .map(c => ({
         label: c.label,
         data:  history.map(h => h[c.key]),
