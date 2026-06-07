@@ -32,7 +32,7 @@ body {
   background: var(--bg);
   color: var(--text);
   min-height: 100vh;
-  font-size: 14px;
+  font-size: 15px;
   overscroll-behavior-y: contain; /* evita pull-to-refresh acidental no mobile */
 }
 
@@ -133,8 +133,9 @@ header {
 .refresh-btn {
   background: var(--surface2); border: 1px solid var(--border);
   border-radius: var(--radius-sm); color: var(--text);
-  padding: 6px 14px; font-size: 13px; cursor: pointer;
+  padding: 10px 18px; font-size: 14px; cursor: pointer;
   transition: background 0.15s; display: flex; align-items: center; gap: 6px;
+  min-height: 44px;
 }
 .refresh-btn:hover { background: var(--border); }
 .refresh-btn .icon { display: inline-block; }
@@ -142,7 +143,7 @@ header {
 .menu-btn {
   background: var(--surface2); border: 1px solid var(--border);
   border-radius: var(--radius-sm); color: var(--text);
-  width: 38px; height: 38px; font-size: 17px; cursor: pointer;
+  width: 44px; height: 44px; font-size: 19px; cursor: pointer;
   display: flex; align-items: center; justify-content: center;
   transition: background 0.15s, border-color 0.15s;
 }
@@ -232,10 +233,11 @@ header {
 
 /* Botão "Pagar" — aciona o botão de coluna do Coda direto pelo card */
 .pay-btn {
-  display: inline-flex; align-items: center; gap: 6px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
   background: var(--green); border: none; border-radius: var(--radius-sm);
-  color: #fff; font-size: 11px; font-weight: 600; padding: 6px 12px;
+  color: #fff; font-size: 14px; font-weight: 700; padding: 13px 20px;
   cursor: pointer; transition: filter .15s, transform .1s;
+  min-height: 46px;
 }
 .pay-btn:hover:not(:disabled) { filter: brightness(1.1); }
 .pay-btn:active:not(:disabled) { transform: scale(.97); }
@@ -247,15 +249,27 @@ main { padding: 24px; max-width: 1400px; margin: 0 auto; }
 /* ── KPIs ── */
 .kpi-grid {
   display: grid;
-  grid-template-columns: repeat(7, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: 16px; margin-bottom: 24px;
 }
-@media (max-width: 1400px) { .kpi-grid { grid-template-columns: repeat(4,1fr); } }
-@media (max-width: 720px)  { .kpi-grid { grid-template-columns: repeat(2,1fr); } }
+@media (max-width: 1400px) { .kpi-grid { grid-template-columns: repeat(3,1fr); } }
+@media (max-width: 960px)  { .kpi-grid { grid-template-columns: repeat(2,1fr); } }
+
+/* Saldo do mês e saldo acumulado viram cartões "hero", ocupando a largura toda
+   e com destaque visual maior — são as informações mais importantes do painel */
+#kpi-bal-month-card, #kpi-balance-card {
+  grid-column: 1 / -1;
+}
+#kpi-bal-month-card .kpi-value, #kpi-balance-card .kpi-value {
+  font-size: 34px;
+}
+#kpi-bal-month-card .kpi-label, #kpi-balance-card .kpi-label {
+  font-size: 13px;
+}
 
 .kpi-card {
   background: var(--surface); border: 1px solid var(--border);
-  border-radius: var(--radius); padding: 20px;
+  border-radius: var(--radius); padding: 22px 24px;
   position: relative; overflow: hidden;
   transition: border-color 0.15s, transform 0.1s;
 }
@@ -277,10 +291,10 @@ main { padding: 24px; max-width: 1400px; margin: 0 auto; }
 .kpi-card.bal-cum.neg    { --accent: var(--red); }
 
 .kpi-label {
-  font-size: 11px; font-weight: 600; color: var(--text2);
+  font-size: 12px; font-weight: 600; color: var(--text2);
   text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 10px;
 }
-.kpi-value { font-size: 22px; font-weight: 700; letter-spacing: -0.5px; }
+.kpi-value { font-size: 26px; font-weight: 700; letter-spacing: -0.5px; }
 .kpi-card.income .kpi-value         { color: var(--green); }
 .kpi-card.fixedincome .kpi-value    { color: #06b6d4; }
 .kpi-card.expense .kpi-value        { color: var(--red); }
@@ -290,7 +304,7 @@ main { padding: 24px; max-width: 1400px; margin: 0 auto; }
 .kpi-card.bal-month.neg .kpi-value  { color: var(--red); }
 .kpi-card.bal-cum.pos .kpi-value    { color: var(--green); }
 .kpi-card.bal-cum.neg .kpi-value    { color: var(--red); }
-.kpi-sub { font-size: 12px; color: var(--text2); margin-top: 5px; }
+.kpi-sub { font-size: 13px; color: var(--text2); margin-top: 6px; }
 .progress-bar {
   height: 4px; background: var(--border);
   border-radius: 2px; overflow: hidden; margin-top: 10px;
@@ -388,8 +402,9 @@ main { padding: 24px; max-width: 1400px; margin: 0 auto; }
 }
 .tab-btn {
   background: none; border: none; color: var(--text2);
-  padding: 5px 12px; border-radius: 6px; font-size: 12px;
+  padding: 10px 16px; border-radius: 6px; font-size: 13px;
   cursor: pointer; transition: all 0.15s; white-space: nowrap;
+  min-height: 40px;
 }
 .tab-btn.active { background: var(--surface); color: var(--text); font-weight: 600; }
 .table-count { font-size: 12px; color: var(--text2); }
@@ -479,29 +494,30 @@ main { padding: 24px; max-width: 1400px; margin: 0 auto; }
     flex-wrap: wrap; height: auto;
     padding: 10px 14px; gap: 8px;
   }
-  .logo { font-size: 15px; order: 1; }
-  .month-nav { order: 3; width: 100%; justify-content: center; padding: 5px 10px; }
-  .month-label { min-width: 120px; font-size: 13px; }
-  .header-right { order: 2; gap: 6px; margin-left: auto; }
+  .logo { font-size: 16px; order: 1; }
+  .month-nav { order: 3; width: 100%; justify-content: center; padding: 6px 10px; }
+  .month-label { min-width: 120px; font-size: 14px; }
+  .header-right { order: 2; gap: 8px; margin-left: auto; }
   .last-updated { display: none; }
-  .refresh-btn { font-size: 12px; padding: 5px 10px; }
-  .menu-btn { width: 34px; height: 34px; font-size: 15px; }
+  .refresh-btn { font-size: 13px; padding: 9px 14px; min-height: 42px; }
+  .menu-btn { width: 42px; height: 42px; font-size: 17px; }
   #side-menu { width: 100%; max-width: 100vw; }
 
   /* Main */
   main { padding: 12px; }
 
-  /* KPI cards */
-  .kpi-grid { gap: 8px; margin-bottom: 14px; }
-  .kpi-card { padding: 12px 10px; }
-  .kpi-value { font-size: 17px; }
-  .kpi-label { font-size: 10px; margin-bottom: 5px; }
-  .kpi-sub { font-size: 10px; }
+  /* KPI cards: 2 colunas, cartões maiores e mais espaçados — prioriza legibilidade no toque */
+  .kpi-grid { grid-template-columns: repeat(2,1fr); gap: 10px; margin-bottom: 16px; }
+  .kpi-card { padding: 16px 14px; }
+  .kpi-value { font-size: 21px; }
+  #kpi-bal-month-card .kpi-value, #kpi-balance-card .kpi-value { font-size: 28px; }
+  .kpi-label { font-size: 11px; margin-bottom: 6px; }
+  .kpi-sub { font-size: 11px; }
 
   /* Balance banner */
-  .balance-banner { flex-direction: column; gap: 10px; padding: 14px; }
+  .balance-banner { flex-direction: column; gap: 10px; padding: 16px; }
   .bb-track-wrap { width: 100%; min-width: unset; }
-  .bb-amount { font-size: 24px; }
+  .bb-amount { font-size: 26px; }
   .bb-month { text-align: left; }
 
   /* Chart controls */
@@ -511,12 +527,15 @@ main { padding: 24px; max-width: 1400px; margin: 0 auto; }
   .bar-chart-wrap { height: 200px; }
   .donut-chart-wrap { height: 180px; }
 
-  /* Tabs */
+  /* Tabs: rolagem horizontal com botões maiores e mais fáceis de tocar */
   .tabs { overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 2px; }
-  .tab-btn { padding: 5px 8px; font-size: 11px; white-space: nowrap; }
+  .tab-btn { padding: 9px 14px; font-size: 12px; white-space: nowrap; min-height: 38px; }
 
   /* Tabela de dados */
-  .data-table th, .data-table td { padding: 9px 10px; font-size: 12px; }
+  .data-table th, .data-table td { padding: 10px 10px; font-size: 12px; }
+
+  /* Cartões de item: padding levemente reduzido para caber melhor na tela */
+  .anim-card > div[style*="padding:18px"] { padding: 16px 14px !important; }
 
   /* Floating balance: vira botão compacto no canto inferior direito no mobile */
   #float-balance {
@@ -2141,31 +2160,20 @@ function renderInstallmentCards(tableId, rows) {
       <div class="anim-card" style="animation-delay:0ms;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);
                   overflow:hidden;${allDone ? 'opacity:.6' : ''}">
         <div style="height:3px;background:${accent}"></div>
-        <div onclick="toggleInstallmentGroup('${groupId}')" style="padding:14px 16px;cursor:pointer">
-          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
-            <div style="font-size:14px;font-weight:700;line-height:1.3;flex:1">${esc(key)}</div>
+        <div onclick="toggleInstallmentGroup('${groupId}')" style="padding:18px 18px;cursor:pointer">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:6px">
+            <div style="font-size:17px;font-weight:700;line-height:1.3;flex:1">${esc(key)}</div>
             ${badge}
           </div>
-          ${progress}
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:${pct !== null ? '10' : '14'}px">
-            ${cur.amount ? `<div>
-              <div style="font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px">Por parcela</div>
-              <div style="font-size:16px;font-weight:700;color:${allDone ? 'var(--text2)' : 'var(--purple)'}">${fmt(cur.amount)}</div>
-            </div>` : ''}
-            ${payDay ? `<div>
-              <div style="font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px">${allDone ? 'Última parcela' : 'Vencimento'}</div>
-              <div style="font-size:14px;font-weight:600">${payDay}</div>
-            </div>` : ''}
-            ${valTot ? `<div>
-              <div style="font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px">Total</div>
-              <div style="font-size:13px">${fmt(valTot)}</div>
-            </div>` : ''}
-            ${dataIni ? `<div>
-              <div style="font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px">Início</div>
-              <div style="font-size:13px">${dataIni.toLocaleDateString('pt-BR')}</div>
-            </div>` : ''}
+          <div style="font-size:12px;color:var(--text2);margin-bottom:6px">
+            ${[payDay ? `${allDone ? 'última parcela' : 'vence'} ${payDay}` : '', valTot ? `total ${fmt(valTot)}` : '', dataIni ? `início ${dataIni.toLocaleDateString('pt-BR')}` : ''].filter(Boolean).join(' · ')}
           </div>
-          <div style="text-align:center;margin-top:10px;font-size:11px;color:var(--text2)">
+          ${progress}
+          ${cur.amount ? `<div style="margin-top:${pct !== null ? '10' : '6'}px">
+            <div style="font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px">Por parcela</div>
+            <div style="font-size:22px;font-weight:700;color:${allDone ? 'var(--text2)' : 'var(--purple)'}">${fmt(cur.amount)}</div>
+          </div>` : ''}
+          <div style="text-align:center;margin-top:14px;font-size:12px;color:var(--text2)">
             <span id="${groupId}-arrow" class="inst-arrow">▾</span> ${enriched.length} parcela${enriched.length > 1 ? 's' : ''} — toque para ver todas
           </div>
         </div>
@@ -2279,28 +2287,20 @@ function renderVigenciaCards(tableId, rows, cat) {
       <div class="anim-card" style="animation-delay:${Math.min(idx,10)*35}ms;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);
                   overflow:hidden;${!active ? 'opacity:.55' : ''}">
         <div style="height:3px;background:${active ? accent : 'var(--border)'}"></div>
-        <div style="padding:14px 16px">
-          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:4px">
-            <div style="font-size:14px;font-weight:700;line-height:1.3;flex:1">${esc(name)}</div>
+        <div style="padding:18px 18px">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:6px">
+            <div style="font-size:17px;font-weight:700;line-height:1.3;flex:1">${esc(name)}</div>
             ${badge}
           </div>
-          ${catVal ? `<div style="font-size:11px;color:var(--text2);margin-bottom:12px">${esc(catVal)}</div>` : '<div style="margin-bottom:12px"></div>'}
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-            ${amount ? `<div>
-              <div style="font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px">Por mês</div>
-              <div style="font-size:18px;font-weight:700;color:${active ? accent : 'var(--text2)'}">${fmt(amount)}</div>
-            </div>` : ''}
-            <div>
-              <div style="font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px">Pagamento</div>
-              <div style="font-size:14px;font-weight:600">${payDay}</div>
-            </div>
-            <div style="grid-column:1/-1">
-              <div style="font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px">Vigência</div>
-              <div style="font-size:12px">${fmtMes(startDate)} → ${fmtMes(endDate)}</div>
-            </div>
+          <div style="font-size:12px;color:var(--text2);margin-bottom:14px">
+            ${[catVal, `vence ${payDay}`, `${fmtMes(startDate)} → ${fmtMes(endDate)}`].filter(Boolean).join(' · ')}
           </div>
-          ${(active && pagarColId) ? `<div style="margin-top:12px">
-            <button class="pay-btn" style="width:100%;justify-content:center"
+          ${amount ? `<div style="margin-bottom:6px">
+            <div style="font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px">Por mês</div>
+            <div style="font-size:22px;font-weight:700;color:${active ? accent : 'var(--text2)'}">${fmt(amount)}</div>
+          </div>` : ''}
+          ${(active && pagarColId) ? `<div style="margin-top:14px">
+            <button class="pay-btn" style="width:100%"
               onclick="event.stopPropagation();pagarItem('${tableId}','${row.id}','${pagarColId}',this)">${actionLbl}</button>
           </div>` : ''}
         </div>
