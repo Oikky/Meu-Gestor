@@ -221,6 +221,14 @@ header {
 .inst-collapse-inner { overflow: hidden; min-height: 0; }
 .inst-arrow { display: inline-block; transition: transform .3s cubic-bezier(.16,1,.3,1); }
 .inst-arrow.open { transform: rotate(180deg); }
+.inst-grid { display: grid; grid-template-columns: repeat(auto-fill,minmax(260px,1fr)); gap: 12px; }
+.inst-filter-tab {
+  background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius-sm);
+  color: var(--text2); padding: 7px 16px; font-size: 12px; font-weight: 500;
+  cursor: pointer; transition: background .15s, border-color .15s, color .15s;
+}
+.inst-filter-tab:hover:not(.active) { color: var(--text); border-color: var(--purple); }
+.inst-filter-tab.active { background: var(--purple); border-color: var(--purple); color: #fff; font-weight: 600; }
 
 /* ── MAIN ── */
 main { padding: 24px; max-width: 1400px; margin: 0 auto; }
@@ -1998,7 +2006,7 @@ function renderInstallmentCards(tableId, rows) {
     groups[key].push(row);
   });
 
-  const groupCards = order.map((key, idx) => {
+  const groupInfos = order.map((key, idx) => {
     const items = groups[key];
 
     const enriched = items.map(row => {
@@ -2074,8 +2082,8 @@ function renderInstallmentCards(tableId, rows) {
         </div>`;
     }).join('');
 
-    return `
-      <div class="anim-card" style="animation-delay:${Math.min(idx,10)*35}ms;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);
+    const cardHtml = `
+      <div class="anim-card" style="animation-delay:0ms;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);
                   overflow:hidden;${allDone ? 'opacity:.6' : ''}">
         <div style="height:3px;background:${accent}"></div>
         <div onclick="toggleInstallmentGroup('${groupId}')" style="padding:14px 16px;cursor:pointer">
@@ -2090,7 +2098,7 @@ function renderInstallmentCards(tableId, rows) {
               <div style="font-size:16px;font-weight:700;color:${allDone ? 'var(--text2)' : 'var(--purple)'}">${fmt(cur.amount)}</div>
             </div>` : ''}
             ${payDay ? `<div>
-              <div style="font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px">Vencimento</div>
+              <div style="font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px">${allDone ? 'Última parcela' : 'Vencimento'}</div>
               <div style="font-size:14px;font-weight:600">${payDay}</div>
             </div>` : ''}
             ${valTot ? `<div>
@@ -2115,9 +2123,52 @@ function renderInstallmentCards(tableId, rows) {
           </div>
         </div>
       </div>`;
-  }).join('');
 
-  return `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px">${groupCards}</div>`;
+    // dataKey usada para ordenar: vencimento da parcela atual (pendentes) ou da última parcela (pagos)
+    const sortTime = cur.dateVal ? cur.dateVal.getTime() : Number.POSITIVE_INFINITY;
+    return { cardHtml, allDone, sortTime };
+  });
+
+  // Aplica o delay de animação em cascata de acordo com a ordem final de exibição
+  const stagger = (list) => list.map((g, i) =>
+    g.cardHtml.replace('animation-delay:0ms', `animation-delay:${Math.min(i, 10) * 35}ms`)).join('');
+
+  // Pendentes: ordenados por ordem de pagamento (vencimento da parcela atual, mais próximo primeiro)
+  const activeList = groupInfos.filter(g => !g.allDone).sort((a, b) => a.sortTime - b.sortTime);
+  // Pagos: em opção separada, mais recentes primeiro
+  const doneList = groupInfos.filter(g => g.allDone).sort((a, b) => b.sortTime - a.sortTime);
+
+  const emptyMsg = txt => `<p style="grid-column:1/-1;color:var(--text2);text-align:center;padding:24px;font-size:13px">${txt}</p>`;
+  const activeHtml = activeList.length ? stagger(activeList) : emptyMsg('Nenhuma compra em andamento. 🎉');
+  const doneHtml   = doneList.length   ? stagger(doneList)   : emptyMsg('Nenhuma compra paga ainda.');
+
+  const tabs = `
+    <div style="display:flex;gap:8px;margin-bottom:16px">
+      <button id="inst-tab-active" class="inst-filter-tab active" onclick="switchInstallmentFilter('active')">
+        🔄 Em andamento <span style="opacity:.7">(${activeList.length})</span>
+      </button>
+      <button id="inst-tab-done" class="inst-filter-tab" onclick="switchInstallmentFilter('done')">
+        ✅ Pagos <span style="opacity:.7">(${doneList.length})</span>
+      </button>
+    </div>`;
+
+  return `${tabs}
+    <div id="inst-list-active" class="inst-grid">${activeHtml}</div>
+    <div id="inst-list-done" class="inst-grid" style="display:none">${doneHtml}</div>`;
+}
+
+// Alterna entre parcelas em andamento e já pagas, na visão de Parcelados
+function switchInstallmentFilter(filter) {
+  const listActive = document.getElementById('inst-list-active');
+  const listDone   = document.getElementById('inst-list-done');
+  const tabActive  = document.getElementById('inst-tab-active');
+  const tabDone    = document.getElementById('inst-tab-done');
+  if (!listActive || !listDone) return;
+  const showActive = filter === 'active';
+  listActive.style.display = showActive ? 'grid' : 'none';
+  listDone.style.display   = showActive ? 'none' : 'grid';
+  tabActive?.classList.toggle('active', showActive);
+  tabDone?.classList.toggle('active', !showActive);
 }
 
 function toggleInstallmentGroup(id) {
