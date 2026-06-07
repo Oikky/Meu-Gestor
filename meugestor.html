@@ -450,6 +450,13 @@ main { padding: 24px; max-width: 1400px; margin: 0 auto; }
   /* Setup */
   .setup-card { padding: 20px 14px; }
   .col-grid { grid-template-columns: 1fr; }
+
+  /* Add / Sim modals */
+  #add-modal, #sim-modal { padding: 8px; align-items: flex-start; }
+  #add-modal > div, #sim-modal > div { border-radius: var(--radius); }
+
+  /* Sim banner */
+  #sim-banner { flex-direction: column; align-items: flex-start; padding: 10px 14px; }
 }
 </style>
 </head>
@@ -524,6 +531,8 @@ main { padding: 24px; max-width: 1400px; margin: 0 auto; }
       <button class="refresh-btn" id="refresh-btn" onclick="refresh()">
         <span class="icon">↻</span> Atualizar
       </button>
+      <button class="config-btn" onclick="showAdd()"   style="margin-right:6px">➕ adicionar</button>
+      <button class="config-btn" onclick="showSim()"   style="margin-right:6px">🔮 simular</button>
       <button class="config-btn" onclick="showItems()" style="margin-right:6px">📋 itens</button>
       <button class="config-btn" onclick="showDiag()" style="margin-right:6px">🔍 diagnóstico</button>
       <button class="config-btn" onclick="showSetup()">⚙️ configurar</button>
@@ -590,6 +599,18 @@ main { padding: 24px; max-width: 1400px; margin: 0 auto; }
       <div class="bb-month">
         <div class="bb-month-label">Este mês</div>
         <div class="bb-month-val pos" id="bb-month-val">—</div>
+      </div>
+    </div>
+
+    <!-- Simulation Banner -->
+    <div id="sim-banner" style="display:none; background:rgba(139,92,246,.1); border:1px solid var(--purple); border-radius:var(--radius); padding:10px 18px; margin-bottom:16px; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px;">
+      <div>
+        <span style="font-size:13px;font-weight:700;color:var(--purple)">🔮 Simulação ativa</span>
+        <span id="sim-banner-desc" style="font-size:12px;color:var(--text2);margin-left:8px"></span>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <button onclick="showSim()" style="background:none;border:1px solid var(--purple);border-radius:6px;color:var(--purple);font-size:12px;padding:4px 12px;cursor:pointer">Editar</button>
+        <button onclick="clearSim()" style="background:none;border:1px solid var(--border);border-radius:6px;color:var(--text2);font-size:12px;padding:4px 12px;cursor:pointer">✕ Limpar</button>
       </div>
     </div>
 
@@ -689,6 +710,38 @@ main { padding: 24px; max-width: 1400px; margin: 0 auto; }
   </div>
 </div>
 
+<!-- Add Modal -->
+<div id="add-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.78); z-index:250; align-items:flex-start; justify-content:center; padding:24px 16px; overflow-y:auto;">
+  <div style="background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); width:100%; max-width:480px;">
+    <div style="display:flex; justify-content:space-between; align-items:center; padding:18px 24px; border-bottom:1px solid var(--border); position:sticky; top:0; background:var(--surface); z-index:1; border-radius:var(--radius) var(--radius) 0 0;">
+      <h3 style="font-size:16px">➕ Novo Lançamento</h3>
+      <button onclick="closeAdd()" style="background:none;border:none;color:var(--text2);font-size:20px;cursor:pointer">✕</button>
+    </div>
+    <div style="padding:20px 24px;">
+      <div id="add-tabs" style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:20px"></div>
+      <div id="add-form-area"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Sim Modal -->
+<div id="sim-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.78); z-index:250; align-items:flex-start; justify-content:center; padding:24px 16px; overflow-y:auto;">
+  <div style="background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); width:100%; max-width:500px;">
+    <div style="display:flex; justify-content:space-between; align-items:center; padding:18px 24px; border-bottom:1px solid var(--border); position:sticky; top:0; background:var(--surface); z-index:1; border-radius:var(--radius) var(--radius) 0 0;">
+      <div>
+        <h3 style="font-size:16px">🔮 Simulação</h3>
+        <div style="font-size:12px;color:var(--text2);margin-top:2px">Itens hipotéticos — não salvos no Coda, refletem nos KPIs e gráficos</div>
+      </div>
+      <button onclick="document.getElementById('sim-modal').style.display='none'" style="background:none;border:none;color:var(--text2);font-size:20px;cursor:pointer">✕</button>
+    </div>
+    <div style="padding:20px 24px;">
+      <div id="sim-type-tabs" style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:16px"></div>
+      <div id="sim-form-area"></div>
+      <div id="sim-items-list"></div>
+    </div>
+  </div>
+</div>
+
 <!-- Diagnostic Modal -->
 <div id="diag-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.7); z-index:200; align-items:flex-start; justify-content:center; padding:40px 16px; overflow-y:auto;">
   <div style="background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:28px; width:100%; max-width:720px;">
@@ -737,6 +790,7 @@ const S = {
   lastUpdated: null,
   chartRange:  { months: 6, offset: 0 },
   chartView:   'all', // 'all' | 'income' | 'fixedincome' | 'expense' | 'fixed' | 'installment' | 'balance'
+  sim:         { items: [] }, // itens hipotéticos (simulação local, não salva no Coda)
 };
 
 // ═══════════════════════════════════════════════════
@@ -788,6 +842,25 @@ async function getAllRows(tableId) {
     token = d.nextPageToken || null;
   } while (token);
   return rows;
+}
+
+async function codaPost(path, body) {
+  const r = await fetch(`${BASE}${path}`, {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${API_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  if (!r.ok) {
+    const t = await r.text().catch(() => '');
+    throw new Error(`HTTP ${r.status}: ${t.slice(0, 300)}`);
+  }
+  return r.json();
+}
+
+// Busca o ID da coluna pelo nome (para usar no POST /rows)
+function colId(tableId, colName) {
+  if (!colName) return null;
+  return (S.allCols[tableId] || []).find(c => c.name === colName)?.id || null;
 }
 
 // ═══════════════════════════════════════════════════
@@ -967,6 +1040,28 @@ function getMonthData(y, m) {
         const amount = Math.abs(parseBRL(get(expCm.amount)));
         if (!inMonth(date, y, m) || amount === 0) continue;
         out['fixed'].push({ description: desc, date, amount, cat: 'fixed', startDate: null, endDate: null });
+      }
+    }
+  }
+
+  // ── Itens da simulação local (não salvos no Coda) ──
+  if (S.sim && S.sim.items.length) {
+    for (const item of S.sim.items) {
+      if (item.type === 'installment') {
+        for (let i = 0; i < item.nParcelas; i++) {
+          const d = new Date(item.startDate.getFullYear(), item.startDate.getMonth() + i, item.startDate.getDate());
+          if (d.getFullYear() === y && d.getMonth() === m) {
+            out['installment'].push({ amount: item.amtPer, date: d, description: `🔮 ${i+1}/${item.nParcelas} ${item.name}`, cat: 'Simulado', startDate: null, endDate: null, _simulated: true });
+          }
+        }
+      } else if (item.type === 'fixedincome') {
+        if (isActiveInMonth(item, y, m)) {
+          out['fixedincome'].push({ amount: item.amount, date: new Date(y, m, item.payDay || 1), description: `🔮 ${item.name}`, cat: 'Simulado', startDate: item.startDate, endDate: item.endDate, _simulated: true });
+        }
+      } else if (item.type === 'fixed') {
+        if (isActiveInMonth(item, y, m)) {
+          out['fixed'].push({ amount: item.amount, date: new Date(y, m, item.payDay || 1), description: `🔮 ${item.name}`, cat: 'Simulado', startDate: item.startDate, endDate: item.endDate, _simulated: true });
+        }
       }
     }
   }
@@ -1370,6 +1465,7 @@ function updateDashboard() {
   renderCharts();
   renderDonut(kpis);
   renderTable(data);
+  updateSimBanner();
 }
 
 // ═══════════════════════════════════════════════════
@@ -1963,6 +2059,350 @@ function renderTransactionList(tableId, rows, cat) {
     </div>`;
 
   return header + sections;
+}
+
+// ═══════════════════════════════════════════════════
+//  ADD LANÇAMENTO — POST para o Coda
+// ═══════════════════════════════════════════════════
+const ADD_CATS = [
+  { k:'income',      l:'💰 Entrada Var.' },
+  { k:'expense',     l:'💸 Saída Var.' },
+  { k:'fixedincome', l:'📌 Ganho Fixo' },
+  { k:'fixed',       l:'🔒 Gasto Fixo' },
+  { k:'installment', l:'📦 Parcelado' },
+];
+const ADD_ACCENT = { income:'var(--green)', expense:'var(--red)', fixedincome:'#06b6d4', fixed:'var(--orange)', installment:'var(--purple)' };
+let _addCat = 'income';
+
+function showAdd() {
+  if (!S.mapping) { toast('Configure o dashboard primeiro.'); return; }
+  _addCat = 'income';
+  document.getElementById('add-tabs').innerHTML = ADD_CATS.map(c =>
+    `<button id="atab-${c.k}" onclick="switchAddTab('${c.k}')"
+      style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;
+             color:var(--text2);padding:5px 10px;font-size:11px;cursor:pointer;transition:all .15s">
+      ${c.l}</button>`
+  ).join('');
+  switchAddTab('income');
+  document.getElementById('add-modal').style.display = 'flex';
+}
+
+function closeAdd() { document.getElementById('add-modal').style.display = 'none'; }
+
+function switchAddTab(cat) {
+  _addCat = cat;
+  ADD_CATS.forEach(c => {
+    const btn = document.getElementById(`atab-${c.k}`);
+    if (!btn) return;
+    const on = c.k === cat;
+    btn.style.background  = on ? (ADD_ACCENT[c.k]||'var(--blue)') : 'var(--surface2)';
+    btn.style.borderColor = on ? (ADD_ACCENT[c.k]||'var(--blue)') : 'var(--border)';
+    btn.style.color       = on ? '#fff' : 'var(--text2)';
+    btn.style.fontWeight  = on ? '600' : '400';
+  });
+
+  const today = new Date().toISOString().slice(0, 10);
+  const inp = (id, lbl, type, opts='') =>
+    `<div class="setup-group"><label>${lbl}</label><input type="${type}" id="add-${id}" ${opts} style="font-size:14px"></div>`;
+
+  let html = '';
+  if (cat === 'income') {
+    html = inp('desc',   'Descrição *',    'text',   'required placeholder="Ex: Freelance, Venda..."') +
+           inp('amount', 'Valor (R$) *',   'number', 'required min="0.01" step="0.01" placeholder="0,00"') +
+           inp('date',   'Data *',         'date',   `required value="${today}"`);
+  } else if (cat === 'expense') {
+    html = inp('desc',   'Descrição *',         'text',   'required placeholder="Ex: Supermercado, Farmácia..."') +
+           inp('amount', 'Valor (R$) *',         'number', 'required min="0.01" step="0.01" placeholder="0,00"') +
+           inp('date',   'Data *',               'date',   `required value="${today}"`) +
+           inp('cat',    'Categoria (opcional)', 'text',   'placeholder="Ex: Alimentação, Lazer..."');
+  } else if (cat === 'fixedincome') {
+    html = inp('desc',   'Descrição *',                      'text',   'required placeholder="Ex: Salário, Aluguel recebido..."') +
+           inp('amount', 'Valor mensal (R$) *',              'number', 'required min="0.01" step="0.01" placeholder="0,00"') +
+           inp('date',   'Data de pagamento (opcional)',     'date',   '') +
+           inp('cat',    'Fonte (opcional)',                  'text',   'placeholder="Ex: CLT, Autônomo..."') +
+           inp('start',  'Início da vigência *',             'date',   `required value="${today}"`) +
+           inp('end',    'Fim da vigência (opcional)',        'date',   '');
+  } else if (cat === 'fixed') {
+    html = inp('desc',   'Descrição *',                      'text',   'required placeholder="Ex: Netflix, Condomínio..."') +
+           inp('amount', 'Valor mensal (R$) *',              'number', 'required min="0.01" step="0.01" placeholder="0,00"') +
+           inp('date',   'Data de vencimento (opcional)',    'date',   '') +
+           inp('cat',    'Categoria (opcional)',              'text',   'placeholder="Ex: Streaming, Moradia..."') +
+           inp('start',  'Início da vigência *',             'date',   `required value="${today}"`) +
+           inp('end',    'Fim da vigência (opcional)',        'date',   '');
+  } else if (cat === 'installment') {
+    html = inp('desc',     'Nome do item *',         'text',   'required placeholder="Ex: iPhone 16, Fogão..."') +
+           inp('total',    'Valor total (R$) *',     'number', 'required min="0.01" step="0.01" placeholder="0,00"') +
+           inp('parcelas', 'Nº de parcelas *',       'number', 'required min="1" step="1" placeholder="Ex: 12"') +
+           inp('date',     '1ª parcela — data *',    'date',   `required value="${today}"`) +
+           inp('cat',      'Categoria (opcional)',   'text',   'placeholder="Ex: Eletrodoméstico..."');
+    html += `<div style="background:var(--surface2);border-radius:var(--radius-sm);padding:10px 12px;font-size:12px;color:var(--text2);margin-bottom:18px">
+      💡 Serão criadas N linhas na tabela de parcelados, com descrição "1/N Nome", "2/N Nome"…
+    </div>`;
+  }
+
+  html += `<div style="display:flex;gap:10px;margin-top:4px">
+    <button class="btn btn-primary" onclick="submitAdd()" style="flex:1">💾 Salvar no Coda</button>
+    <button class="btn btn-secondary" onclick="closeAdd()">Cancelar</button>
+  </div>`;
+  document.getElementById('add-form-area').innerHTML = html;
+}
+
+async function submitAdd() {
+  const cat     = _addCat;
+  const tableId = S.mapping[cat];
+  if (!tableId) { toast('❌ Tabela não configurada para esta categoria'); return; }
+  const cm  = S.colMap[tableId] || {};
+  const val = id => document.getElementById(`add-${id}`)?.value?.trim() || '';
+  const num = id => parseFloat(val(id)) || 0;
+
+  const cells = [];
+  const addCell = (colName, value) => {
+    if (!colName || value === null || value === undefined || value === '') return;
+    const cid = colId(tableId, colName);
+    if (cid) cells.push({ column: cid, value });
+  };
+
+  if (cat === 'installment') {
+    const name    = val('desc');
+    const total   = num('total');
+    const nPar    = parseInt(val('parcelas')) || 0;
+    const dateStr = val('date');
+    const catVal  = val('cat');
+    if (!name)    { toast('❌ Informe o nome do item');       return; }
+    if (!total)   { toast('❌ Informe o valor total');        return; }
+    if (!nPar)    { toast('❌ Informe o nº de parcelas');     return; }
+    if (!dateStr) { toast('❌ Informe a data da 1ª parcela'); return; }
+
+    const amtPer = Math.round(total / nPar * 100) / 100;
+    const base   = new Date(dateStr + 'T12:00:00');
+    const rows   = [];
+    for (let i = 1; i <= nPar; i++) {
+      const d  = new Date(base.getFullYear(), base.getMonth() + (i - 1), base.getDate());
+      const rc = [];
+      const ci = (n, v) => { if (!n || !v && v !== 0) return; const c = colId(tableId, n); if (c) rc.push({ column: c, value: v }); };
+      ci(cm.description, `${i}/${nPar} ${name}`);
+      ci(cm.amount, amtPer);
+      ci(cm.date, d.toISOString().slice(0, 10));
+      if (catVal) ci(cm.category, catVal);
+      rows.push({ cells: rc });
+    }
+    const btn = document.querySelector('#add-form-area .btn-primary');
+    if (btn) { btn.disabled = true; btn.textContent = `Criando ${nPar} parcelas…`; }
+    try {
+      await codaPost(`/docs/${DOC_ID}/tables/${tableId}/rows`, { rows });
+      closeAdd();
+      toast(`✅ ${nPar} parcelas criadas! Atualizando dados…`);
+      await fetchAll();
+      updateDashboard();
+    } catch(e) {
+      toast(`❌ Erro ao salvar: ${e.message}`);
+      if (btn) { btn.disabled = false; btn.textContent = '💾 Salvar no Coda'; }
+    }
+    return;
+  }
+
+  // ─ Single row ─
+  if (cat === 'income') {
+    if (!val('desc'))   { toast('❌ Preencha a descrição'); return; }
+    if (!num('amount')) { toast('❌ Preencha o valor');      return; }
+    if (!val('date'))   { toast('❌ Preencha a data');       return; }
+    addCell(cm.description, val('desc'));
+    addCell(cm.amount, num('amount'));
+    addCell(cm.date, val('date'));
+    if (cm.category && cm.filterCategory) addCell(cm.category, cm.filterCategory);
+
+  } else if (cat === 'expense') {
+    if (!val('desc'))   { toast('❌ Preencha a descrição'); return; }
+    if (!num('amount')) { toast('❌ Preencha o valor');      return; }
+    if (!val('date'))   { toast('❌ Preencha a data');       return; }
+    addCell(cm.description, val('desc'));
+    addCell(cm.amount, num('amount'));
+    addCell(cm.date, val('date'));
+    if (cm.category && cm.filterCategory) addCell(cm.category, cm.filterCategory);
+    // Categoria secundária (ex: Alimentação, Lazer)
+    if (val('cat')) {
+      const altCol = detectCol(tableId, ['categoria','classificacao','classe']);
+      if (altCol && altCol !== cm.category) addCell(altCol, val('cat'));
+    }
+
+  } else if (cat === 'fixedincome' || cat === 'fixed') {
+    if (!val('desc'))   { toast('❌ Preencha a descrição');        return; }
+    if (!num('amount')) { toast('❌ Preencha o valor');             return; }
+    if (!val('start'))  { toast('❌ Preencha o início da vigência'); return; }
+    addCell(cm.description, val('desc'));
+    addCell(cm.amount, num('amount'));
+    if (val('date'))  addCell(cm.date,      val('date'));
+    if (val('cat'))   addCell(cm.category,  val('cat'));
+    if (val('start')) addCell(cm.startDate, val('start'));
+    if (val('end'))   addCell(cm.endDate,   val('end'));
+  }
+
+  if (!cells.length) { toast('❌ Nenhum campo mapeado — verifique a configuração'); return; }
+
+  const btn = document.querySelector('#add-form-area .btn-primary');
+  if (btn) { btn.disabled = true; btn.textContent = 'Salvando…'; }
+  try {
+    await codaPost(`/docs/${DOC_ID}/tables/${tableId}/rows`, { rows: [{ cells }] });
+    closeAdd();
+    toast('✅ Lançamento salvo! Atualizando dados…');
+    await fetchAll();
+    updateDashboard();
+  } catch(e) {
+    toast(`❌ Erro ao salvar: ${e.message}`);
+    if (btn) { btn.disabled = false; btn.textContent = '💾 Salvar no Coda'; }
+  }
+}
+
+// ═══════════════════════════════════════════════════
+//  SIMULAÇÃO — itens hipotéticos (local, não salva)
+// ═══════════════════════════════════════════════════
+let _simCat = 'installment';
+let _simIdCtr = 1;
+
+const SIM_TABS = [
+  { k:'installment', l:'📦 Parcelado' },
+  { k:'fixedincome', l:'📌 Ganho Fixo' },
+  { k:'fixed',       l:'🔒 Gasto Fixo' },
+];
+const SIM_ACCENT = { installment:'var(--purple)', fixedincome:'#06b6d4', fixed:'var(--orange)' };
+
+function showSim() {
+  buildSimTabs();
+  switchSimTab(_simCat || 'installment');
+  document.getElementById('sim-modal').style.display = 'flex';
+}
+
+function buildSimTabs() {
+  document.getElementById('sim-type-tabs').innerHTML = SIM_TABS.map(c =>
+    `<button id="stab-${c.k}" onclick="switchSimTab('${c.k}')"
+      style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;
+             color:var(--text2);padding:5px 12px;font-size:12px;cursor:pointer;transition:all .15s">
+      ${c.l}</button>`
+  ).join('');
+}
+
+function switchSimTab(cat) {
+  _simCat = cat;
+  SIM_TABS.forEach(c => {
+    const btn = document.getElementById(`stab-${c.k}`);
+    if (!btn) return;
+    const on = c.k === cat;
+    btn.style.background  = on ? (SIM_ACCENT[c.k]||'var(--blue)') : 'var(--surface2)';
+    btn.style.borderColor = on ? (SIM_ACCENT[c.k]||'var(--blue)') : 'var(--border)';
+    btn.style.color       = on ? '#fff' : 'var(--text2)';
+    btn.style.fontWeight  = on ? '600' : '400';
+  });
+
+  const today = new Date().toISOString().slice(0, 10);
+  const inp = (id, lbl, type, opts='') =>
+    `<div class="setup-group"><label>${lbl}</label><input type="${type}" id="sim-${id}" ${opts} style="font-size:14px"></div>`;
+
+  let html = '';
+  if (cat === 'installment') {
+    html = inp('name',     'Nome do item',       'text',   'placeholder="Ex: iPhone 16"') +
+           inp('total',    'Valor total (R$)',   'number', 'min="0.01" step="0.01" placeholder="0,00"') +
+           inp('parcelas', 'Nº de parcelas',     'number', 'min="1" step="1" placeholder="Ex: 12"') +
+           inp('date',     '1ª parcela — data', 'date',   `value="${today}"`);
+  } else {
+    html = inp('name',   'Descrição',         'text',   `placeholder="Ex: ${cat==='fixedincome'?'Novo emprego':'Assinatura nova'}"`) +
+           inp('amount', 'Valor mensal (R$)', 'number', 'min="0.01" step="0.01" placeholder="0,00"') +
+           inp('start',  'Início',            'date',   `value="${today}"`) +
+           inp('end',    'Fim (opcional)',     'date',   '');
+  }
+
+  html += `<button class="btn btn-primary" onclick="addSimItem()" style="width:100%;margin-top:4px">＋ Adicionar à simulação</button>`;
+  document.getElementById('sim-form-area').innerHTML = html;
+  renderSimList();
+}
+
+function addSimItem() {
+  const cat = _simCat;
+  const val = id => document.getElementById(`sim-${id}`)?.value?.trim() || '';
+  const num = id => parseFloat(val(id)) || 0;
+
+  if (cat === 'installment') {
+    const name    = val('name');
+    const total   = num('total');
+    const nPar    = parseInt(val('parcelas')) || 0;
+    const dateStr = val('date');
+    if (!name)    { toast('❌ Informe o nome');            return; }
+    if (!total)   { toast('❌ Informe o valor total');    return; }
+    if (!nPar)    { toast('❌ Informe o nº de parcelas'); return; }
+    if (!dateStr) { toast('❌ Informe a data da 1ª parcela'); return; }
+    const startDate = new Date(dateStr + 'T12:00:00');
+    S.sim.items.push({ id: _simIdCtr++, type:'installment', name, nParcelas:nPar,
+      amtPer: Math.round(total / nPar * 100) / 100, totalAmount: total, startDate });
+  } else {
+    const name    = val('name');
+    const amount  = num('amount');
+    const startStr= val('start');
+    const endStr  = val('end');
+    if (!name)     { toast('❌ Informe a descrição'); return; }
+    if (!amount)   { toast('❌ Informe o valor');     return; }
+    if (!startStr) { toast('❌ Informe o início');    return; }
+    S.sim.items.push({ id: _simIdCtr++, type:cat, name, amount,
+      startDate: new Date(startStr + 'T12:00:00'),
+      endDate:   endStr ? new Date(endStr + 'T12:00:00') : null,
+      payDay: 1 });
+  }
+
+  renderSimList();
+  updateDashboard();
+  toast('🔮 Item hipotético adicionado!');
+}
+
+function removeSimItem(id) {
+  S.sim.items = S.sim.items.filter(x => x.id !== id);
+  renderSimList();
+  updateDashboard();
+}
+
+function clearSim() {
+  S.sim.items = [];
+  const banner = document.getElementById('sim-banner');
+  if (banner) banner.style.display = 'none';
+  updateDashboard();
+  toast('Simulação limpa.');
+}
+
+function renderSimList() {
+  const el = document.getElementById('sim-items-list');
+  if (!el) return;
+  if (!S.sim.items.length) {
+    el.innerHTML = `<p style="color:var(--text2);font-size:12px;text-align:center;padding:16px 0;border-top:1px solid var(--border);margin-top:16px">
+      Nenhum item hipotético adicionado.</p>`;
+    return;
+  }
+  const TYPE_LABEL = { installment:'📦', fixedincome:'📌', fixed:'🔒' };
+  el.innerHTML = `<div style="font-size:11px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;margin:16px 0 10px;padding-top:16px;border-top:1px solid var(--border)">
+    Itens na simulação (${S.sim.items.length})</div>` +
+    S.sim.items.map(item => {
+      const accent = SIM_ACCENT[item.type] || 'var(--blue)';
+      const detail = item.type === 'installment'
+        ? `${item.nParcelas}x de ${fmt(item.amtPer)} = ${fmt(item.totalAmount)}`
+        : `${fmt(item.amount)}/mês`;
+      return `<div style="display:flex;justify-content:space-between;align-items:center;
+                  padding:10px 12px;background:var(--surface2);border:1px solid var(--border);
+                  border-radius:var(--radius-sm);margin-bottom:6px">
+        <div>
+          <div style="font-size:13px;font-weight:600">${TYPE_LABEL[item.type]||'🔮'} ${esc(item.name)}</div>
+          <div style="font-size:11px;color:${accent};margin-top:2px">${detail}</div>
+        </div>
+        <button onclick="removeSimItem(${item.id})"
+          style="background:none;border:1px solid var(--border);border-radius:6px;
+                 color:var(--text2);font-size:12px;padding:4px 10px;cursor:pointer">✕</button>
+      </div>`;
+    }).join('');
+}
+
+function updateSimBanner() {
+  const banner = document.getElementById('sim-banner');
+  if (!banner) return;
+  const count = S.sim?.items?.length || 0;
+  if (count === 0) { banner.style.display = 'none'; return; }
+  banner.style.display = 'flex';
+  const desc = document.getElementById('sim-banner-desc');
+  if (desc) desc.textContent = `${count} item${count !== 1 ? 's' : ''} hipotético${count !== 1 ? 's' : ''} — valores refletidos nos KPIs e gráficos`;
 }
 
 // ═══════════════════════════════════════════════════
