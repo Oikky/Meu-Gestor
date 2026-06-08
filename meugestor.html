@@ -101,6 +101,24 @@ body {
 }
 .setup-group select:focus, .setup-group input:focus { border-color: var(--blue); }
 .setup-group .hint { color: var(--text2); font-size: 12px; margin-top: 4px; }
+
+/* ── Campos do formulário "Novo Lançamento" — selects e inputs maiores e consistentes ── */
+.lf-group { margin-bottom: 16px; }
+.lf-group label {
+  display: block; font-size: 11px; font-weight: 600;
+  color: var(--text2); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px;
+}
+.lf-group select, .lf-group input {
+  width: 100%; height: 48px; background: var(--surface2); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); color: var(--text);
+  padding: 0 14px; font-size: 15px; outline: none;
+  transition: border-color .15s, box-shadow .15s;
+}
+.lf-group select { cursor: pointer; }
+.lf-group select:focus, .lf-group input:focus {
+  border-color: var(--blue); box-shadow: 0 0 0 3px rgba(59,130,246,.15);
+}
+.lf-group .hint { color: var(--text2); font-size: 12px; margin-top: 4px; }
 .setup-divider { border: none; border-top: 1px solid var(--border); margin: 24px 0; }
 .col-section { margin-bottom: 20px; }
 .col-section-title { font-size: 13px; font-weight: 600; margin-bottom: 10px; }
@@ -206,17 +224,34 @@ header {
   text-transform: uppercase; letter-spacing: .06em; margin: 14px 0 8px; }
 .side-menu-section:first-of-type { margin-top: 0; }
 .side-menu-item {
-  display: flex; align-items: center; gap: 12px; width: 100%; text-align: left;
-  background: var(--surface2); border: 1px solid var(--border);
+  display: flex; align-items: center; gap: 14px; width: 100%; text-align: left;
+  background: linear-gradient(160deg, var(--surface2), var(--surface));
+  border: 1px solid var(--border);
   border-radius: var(--radius-sm); color: var(--text);
-  padding: 12px 14px; font-size: 14px; cursor: pointer;
-  margin-bottom: 8px; transition: border-color .15s, background .15s, transform .1s;
+  padding: 14px 16px; font-size: 15px; cursor: pointer;
+  margin-bottom: 10px; box-shadow: var(--shadow-sm);
+  transition: border-color .15s, background .15s, transform .15s, box-shadow .15s;
 }
-.side-menu-item:hover { border-color: var(--purple); background: var(--purple-dim); }
+.side-menu-item:hover {
+  border-color: var(--accent, var(--purple));
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lg), 0 0 0 1px color-mix(in srgb, var(--accent, var(--purple)) 45%, transparent);
+}
 .side-menu-item:active { transform: scale(.98); }
-.side-menu-item .ico { font-size: 17px; width: 22px; text-align: center; flex-shrink: 0; }
-.side-menu-item .lbl { display: flex; flex-direction: column; gap: 1px; }
-.side-menu-item .sub { font-size: 11px; color: var(--text2); font-weight: 400; }
+.side-menu-item .ico {
+  font-size: 19px; width: 42px; height: 42px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--accent, var(--purple)) 16%, var(--surface));
+  color: var(--accent, var(--purple));
+}
+.side-menu-item .lbl { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+.side-menu-item .sub { font-size: 12px; color: var(--text2); font-weight: 400; }
+.side-menu-item .chev {
+  font-size: 17px; color: var(--text2); flex-shrink: 0;
+  transition: transform .15s, color .15s;
+}
+.side-menu-item:hover .chev { color: var(--accent, var(--purple)); transform: translateX(2px); }
 .side-menu-footer {
   margin-top: auto; padding-top: 14px; border-top: 1px solid var(--border);
   color: var(--text2); font-size: 12px; text-align: center;
@@ -267,6 +302,40 @@ main { padding: 24px; max-width: 1400px; margin: 0 auto; }
 }
 @media (max-width: 1400px) { .kpi-grid { grid-template-columns: repeat(3,1fr); } }
 @media (max-width: 960px)  { .kpi-grid { grid-template-columns: repeat(2,1fr); } }
+
+/* Cartões pequenos agrupados num único card com mini-grade — "lado a lado, empilhados" */
+.kpi-group-card {
+  grid-column: 1 / -1;
+  background: linear-gradient(160deg, var(--surface) 0%, var(--surface) 75%, var(--surface2) 230%);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 18px 22px 6px;
+  box-shadow: var(--shadow-sm);
+}
+.kpi-group-title {
+  font-size: 12px; font-weight: 600; color: var(--text2);
+  text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 14px;
+}
+.kpi-mini-grid { display: grid; grid-template-columns: repeat(5, 1fr); }
+.kpi-mini-grid > .kpi-card {
+  background: none; border: none; box-shadow: none; border-radius: 0;
+  padding: 4px 18px 18px; margin: 0;
+  border-right: 1px solid var(--border);
+}
+.kpi-mini-grid > .kpi-card:last-child { border-right: none; }
+.kpi-mini-grid > .kpi-card::before, .kpi-mini-grid > .kpi-card::after { display: none; }
+.kpi-mini-grid > .kpi-card:hover { transform: none; box-shadow: none; }
+@media (max-width: 1100px) {
+  .kpi-mini-grid { grid-template-columns: repeat(3, 1fr); }
+  .kpi-mini-grid > .kpi-card:nth-child(3n) { border-right: none; }
+  .kpi-mini-grid > .kpi-card:nth-child(n+4) { border-top: 1px solid var(--border); padding-top: 16px; margin-top: 2px; }
+}
+@media (max-width: 640px) {
+  .kpi-mini-grid { grid-template-columns: repeat(2, 1fr); }
+  .kpi-mini-grid > .kpi-card:nth-child(3n) { border-right: 1px solid var(--border); }
+  .kpi-mini-grid > .kpi-card:nth-child(2n) { border-right: none; }
+  .kpi-mini-grid > .kpi-card:nth-child(n+3) { border-top: 1px solid var(--border); padding-top: 16px; margin-top: 2px; }
+}
 
 /* Saldo do mês e saldo acumulado viram cartões "hero", ocupando a largura toda
    e com destaque visual maior — são as informações mais importantes do painel */
@@ -701,27 +770,32 @@ main { padding: 24px; max-width: 1400px; margin: 0 auto; }
     </div>
 
     <div class="side-menu-section">Lançamentos</div>
-    <button class="side-menu-item" onclick="closeMenu(); showAdd()">
+    <button class="side-menu-item" style="--accent:var(--purple)" onclick="closeMenu(); showAdd()">
       <span class="ico">➕</span>
       <span class="lbl">Adicionar<span class="sub">Novo lançamento na Coda</span></span>
+      <span class="chev">›</span>
     </button>
-    <button class="side-menu-item" onclick="closeMenu(); showSim()">
+    <button class="side-menu-item" style="--accent:#06b6d4" onclick="closeMenu(); showSim()">
       <span class="ico">🔮</span>
       <span class="lbl">Simular<span class="sub">Cenários hipotéticos (what-if)</span></span>
+      <span class="chev">›</span>
     </button>
-    <button class="side-menu-item" onclick="closeMenu(); showItems()">
+    <button class="side-menu-item" style="--accent:var(--orange)" onclick="closeMenu(); showItems()">
       <span class="ico">📋</span>
       <span class="lbl">Itens<span class="sub">Ver por categoria</span></span>
+      <span class="chev">›</span>
     </button>
 
     <div class="side-menu-section">Sistema</div>
-    <button class="side-menu-item" onclick="closeMenu(); showDiag()">
+    <button class="side-menu-item" style="--accent:var(--blue)" onclick="closeMenu(); showDiag()">
       <span class="ico">🔍</span>
       <span class="lbl">Diagnóstico<span class="sub">Inspecionar dados das tabelas</span></span>
+      <span class="chev">›</span>
     </button>
-    <button class="side-menu-item" onclick="closeMenu(); showSetup()">
+    <button class="side-menu-item" style="--accent:var(--text2)" onclick="closeMenu(); showSetup()">
       <span class="ico">⚙️</span>
       <span class="lbl">Configurar<span class="sub">Tabelas e colunas</span></span>
+      <span class="chev">›</span>
     </button>
 
     <div class="side-menu-footer" id="last-updated-side">Meu Gestor</div>
@@ -730,30 +804,35 @@ main { padding: 24px; max-width: 1400px; margin: 0 auto; }
   <main>
     <!-- KPIs -->
     <div class="kpi-grid">
-      <div class="kpi-card income clickable" id="kpi-card-income" onclick="setChartView('income')">
-        <div class="kpi-label">💰 Entradas Var.</div>
-        <div class="kpi-value" id="kpi-income">—</div>
-        <div class="kpi-sub"   id="kpi-income-n">— lançamentos</div>
-      </div>
-      <div class="kpi-card fixedincome clickable" id="kpi-card-fixedincome" onclick="setChartView('fixedincome')">
-        <div class="kpi-label">📌 Ganhos Fixos</div>
-        <div class="kpi-value" id="kpi-fixedincome">—</div>
-        <div class="kpi-sub"   id="kpi-fixedincome-n">— itens ativos</div>
-      </div>
-      <div class="kpi-card expense clickable" id="kpi-card-expense" onclick="setChartView('expense')">
-        <div class="kpi-label">💸 Saídas Var.</div>
-        <div class="kpi-value" id="kpi-expense">—</div>
-        <div class="kpi-sub"   id="kpi-expense-n">— lançamentos</div>
-      </div>
-      <div class="kpi-card fixed clickable" id="kpi-card-fixed" onclick="setChartView('fixed')">
-        <div class="kpi-label">🔒 Gastos Fixos</div>
-        <div class="kpi-value" id="kpi-fixed">—</div>
-        <div class="kpi-sub"   id="kpi-fixed-n">— itens ativos</div>
-      </div>
-      <div class="kpi-card installment clickable" id="kpi-card-installment" onclick="setChartView('installment')">
-        <div class="kpi-label">📦 Parcelados</div>
-        <div class="kpi-value" id="kpi-installment">—</div>
-        <div class="kpi-sub"   id="kpi-installment-n">— parcelas</div>
+      <div class="kpi-group-card">
+        <div class="kpi-group-title">Movimentação do mês</div>
+        <div class="kpi-mini-grid">
+          <div class="kpi-card income clickable" id="kpi-card-income" onclick="setChartView('income')">
+            <div class="kpi-label">💰 Entradas Var.</div>
+            <div class="kpi-value" id="kpi-income">—</div>
+            <div class="kpi-sub"   id="kpi-income-n">— lançamentos</div>
+          </div>
+          <div class="kpi-card fixedincome clickable" id="kpi-card-fixedincome" onclick="setChartView('fixedincome')">
+            <div class="kpi-label">📌 Ganhos Fixos</div>
+            <div class="kpi-value" id="kpi-fixedincome">—</div>
+            <div class="kpi-sub"   id="kpi-fixedincome-n">— itens ativos</div>
+          </div>
+          <div class="kpi-card expense clickable" id="kpi-card-expense" onclick="setChartView('expense')">
+            <div class="kpi-label">💸 Saídas Var.</div>
+            <div class="kpi-value" id="kpi-expense">—</div>
+            <div class="kpi-sub"   id="kpi-expense-n">— lançamentos</div>
+          </div>
+          <div class="kpi-card fixed clickable" id="kpi-card-fixed" onclick="setChartView('fixed')">
+            <div class="kpi-label">🔒 Gastos Fixos</div>
+            <div class="kpi-value" id="kpi-fixed">—</div>
+            <div class="kpi-sub"   id="kpi-fixed-n">— itens ativos</div>
+          </div>
+          <div class="kpi-card installment clickable" id="kpi-card-installment" onclick="setChartView('installment')">
+            <div class="kpi-label">📦 Parcelados</div>
+            <div class="kpi-value" id="kpi-installment">—</div>
+            <div class="kpi-sub"   id="kpi-installment-n">— parcelas</div>
+          </div>
+        </div>
       </div>
       <div class="kpi-card bal-month pos clickable" id="kpi-bal-month-card" onclick="setChartView('balance')">
         <div class="kpi-label">📅 Saldo do Mês</div>
@@ -2432,18 +2511,20 @@ const ADD_CATS = [
   { k:'fixed',       l:'🔒 Gasto Fixo' },
   { k:'installment', l:'📦 Parcelado' },
 ];
-const ADD_ACCENT = { income:'var(--green)', expense:'var(--red)', fixedincome:'#06b6d4', fixed:'var(--orange)', installment:'var(--purple)' };
 let _addCat = 'income';
+
+const PAYMENT_METHODS = ['Pix', 'Cartão de crédito', 'Cartão de débito', 'Dinheiro', 'Transferência / TED', 'Boleto'];
 
 function showAdd() {
   if (!S.mapping) { toast('Configure o dashboard primeiro.'); return; }
   _addCat = 'income';
-  document.getElementById('add-tabs').innerHTML = ADD_CATS.map(c =>
-    `<button id="atab-${c.k}" onclick="switchAddTab('${c.k}')"
-      style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;
-             color:var(--text2);padding:5px 10px;font-size:11px;cursor:pointer;transition:all .15s">
-      ${c.l}</button>`
-  ).join('');
+  document.getElementById('add-tabs').innerHTML = `
+    <div class="lf-group" style="margin-bottom:0">
+      <label>Tipo de lançamento</label>
+      <select id="add-cat-select" onchange="switchAddTab(this.value)">
+        ${ADD_CATS.map(c => `<option value="${c.k}">${c.l}</option>`).join('')}
+      </select>
+    </div>`;
   switchAddTab('income');
   document.getElementById('add-modal').style.display = 'flex';
 }
@@ -2452,35 +2533,35 @@ function closeAdd() { document.getElementById('add-modal').style.display = 'none
 
 function switchAddTab(cat) {
   _addCat = cat;
-  ADD_CATS.forEach(c => {
-    const btn = document.getElementById(`atab-${c.k}`);
-    if (!btn) return;
-    const on = c.k === cat;
-    btn.style.background  = on ? (ADD_ACCENT[c.k]||'var(--blue)') : 'var(--surface2)';
-    btn.style.borderColor = on ? (ADD_ACCENT[c.k]||'var(--blue)') : 'var(--border)';
-    btn.style.color       = on ? '#fff' : 'var(--text2)';
-    btn.style.fontWeight  = on ? '600' : '400';
-  });
+  const catSelect = document.getElementById('add-cat-select');
+  if (catSelect) catSelect.value = cat;
 
   const today = new Date().toISOString().slice(0, 10);
   const inp = (id, lbl, type, opts='') =>
-    `<div class="setup-group"><label>${lbl}</label><input type="${type}" id="add-${id}" ${opts} style="font-size:14px"></div>`;
+    `<div class="lf-group"><label>${lbl}</label><input type="${type}" id="add-${id}" ${opts}></div>`;
+  const sel = (id, lbl, options) =>
+    `<div class="lf-group"><label>${lbl}</label><select id="add-${id}">
+      ${options.map(o => `<option value="${o}">${o}</option>`).join('')}
+    </select></div>`;
 
   let html = '';
   if (cat === 'income') {
     html = inp('desc',   'Descrição *',    'text',   'required placeholder="Ex: Freelance, Venda..."') +
            inp('amount', 'Valor (R$) *',   'number', 'required min="0.01" step="0.01" placeholder="0,00"') +
-           inp('date',   'Data *',         'date',   `required value="${today}"`);
+           inp('date',   'Data *',         'date',   `required value="${today}"`) +
+           sel('payment', 'Forma de pagamento', PAYMENT_METHODS);
   } else if (cat === 'expense') {
     html = inp('desc',   'Descrição *',         'text',   'required placeholder="Ex: Supermercado, Farmácia..."') +
            inp('amount', 'Valor (R$) *',         'number', 'required min="0.01" step="0.01" placeholder="0,00"') +
            inp('date',   'Data *',               'date',   `required value="${today}"`) +
-           inp('cat',    'Categoria (opcional)', 'text',   'placeholder="Ex: Alimentação, Lazer..."');
+           inp('cat',    'Categoria (opcional)', 'text',   'placeholder="Ex: Alimentação, Lazer..."') +
+           sel('payment', 'Forma de pagamento', PAYMENT_METHODS);
   } else if (cat === 'fixedincome') {
     html = inp('desc',   'Descrição *',                      'text',   'required placeholder="Ex: Salário, Aluguel recebido..."') +
            inp('amount', 'Valor mensal (R$) *',              'number', 'required min="0.01" step="0.01" placeholder="0,00"') +
            inp('date',   'Data de pagamento (opcional)',     'date',   '') +
            inp('cat',    'Fonte (opcional)',                  'text',   'placeholder="Ex: CLT, Autônomo..."') +
+           sel('payment', 'Forma de pagamento', PAYMENT_METHODS) +
            inp('start',  'Início da vigência *',             'date',   `required value="${today}"`) +
            inp('end',    'Fim da vigência (opcional)',        'date',   '');
   } else if (cat === 'fixed') {
@@ -2488,6 +2569,7 @@ function switchAddTab(cat) {
            inp('amount', 'Valor mensal (R$) *',              'number', 'required min="0.01" step="0.01" placeholder="0,00"') +
            inp('date',   'Data de vencimento (opcional)',    'date',   '') +
            inp('cat',    'Categoria (opcional)',              'text',   'placeholder="Ex: Streaming, Moradia..."') +
+           sel('payment', 'Forma de pagamento', PAYMENT_METHODS) +
            inp('start',  'Início da vigência *',             'date',   `required value="${today}"`) +
            inp('end',    'Fim da vigência (opcional)',        'date',   '');
   } else if (cat === 'installment') {
@@ -2495,15 +2577,16 @@ function switchAddTab(cat) {
            inp('total',    'Valor total (R$) *',     'number', 'required min="0.01" step="0.01" placeholder="0,00"') +
            inp('parcelas', 'Nº de parcelas *',       'number', 'required min="1" step="1" placeholder="Ex: 12"') +
            inp('date',     '1ª parcela — data *',    'date',   `required value="${today}"`) +
-           inp('cat',      'Categoria (opcional)',   'text',   'placeholder="Ex: Eletrodoméstico..."');
+           inp('cat',      'Categoria (opcional)',   'text',   'placeholder="Ex: Eletrodoméstico..."') +
+           sel('payment',  'Forma de pagamento', PAYMENT_METHODS);
     html += `<div style="background:var(--surface2);border-radius:var(--radius-sm);padding:10px 12px;font-size:12px;color:var(--text2);margin-bottom:18px">
       💡 Serão criadas N linhas na tabela de parcelados, com descrição "1/N Nome", "2/N Nome"…
     </div>`;
   }
 
   html += `<div style="display:flex;gap:10px;margin-top:4px">
-    <button class="btn btn-primary" onclick="submitAdd()" style="flex:1">💾 Salvar no Coda</button>
-    <button class="btn btn-secondary" onclick="closeAdd()">Cancelar</button>
+    <button class="btn btn-primary" onclick="submitAdd()" style="flex:1;height:48px;font-size:15px;border-radius:var(--radius-sm)">💾 Salvar no Coda</button>
+    <button class="btn btn-secondary" onclick="closeAdd()" style="height:48px;font-size:15px;border-radius:var(--radius-sm);padding:0 22px">Cancelar</button>
   </div>`;
   document.getElementById('add-form-area').innerHTML = html;
 }
@@ -2522,6 +2605,8 @@ async function submitAdd() {
     const cid = colId(tableId, colName);
     if (cid) cells.push({ column: cid, value });
   };
+  // Forma de pagamento: só é salva se a tabela do Coda tiver uma coluna correspondente
+  const paymentCol = () => detectCol(tableId, ['forma de pagamento', 'meio de pagamento', 'metodo de pagamento', 'pagamento']);
 
   if (cat === 'installment') {
     const name    = val('desc');
@@ -2534,9 +2619,11 @@ async function submitAdd() {
     if (!nPar)    { toast('❌ Informe o nº de parcelas');     return; }
     if (!dateStr) { toast('❌ Informe a data da 1ª parcela'); return; }
 
-    const amtPer = Math.round(total / nPar * 100) / 100;
-    const base   = new Date(dateStr + 'T12:00:00');
-    const rows   = [];
+    const amtPer  = Math.round(total / nPar * 100) / 100;
+    const base    = new Date(dateStr + 'T12:00:00');
+    const payVal  = val('payment');
+    const payCol  = payVal ? paymentCol() : null;
+    const rows    = [];
     for (let i = 1; i <= nPar; i++) {
       const d  = new Date(base.getFullYear(), base.getMonth() + (i - 1), base.getDate());
       const rc = [];
@@ -2545,6 +2632,7 @@ async function submitAdd() {
       ci(cm.amount, amtPer);
       ci(cm.date, d.toISOString().slice(0, 10));
       if (catVal) ci(cm.category, catVal);
+      if (payCol) ci(payCol, payVal);
       rows.push({ cells: rc });
     }
     const btn = document.querySelector('#add-form-area .btn-primary');
@@ -2596,6 +2684,12 @@ async function submitAdd() {
     if (val('cat'))   addCell(cm.category,  val('cat'));
     if (val('start')) addCell(cm.startDate, val('start'));
     if (val('end'))   addCell(cm.endDate,   val('end'));
+  }
+
+  // Forma de pagamento — salva apenas se existir coluna correspondente na tabela do Coda
+  if (val('payment')) {
+    const pc = paymentCol();
+    if (pc) addCell(pc, val('payment'));
   }
 
   if (!cells.length) { toast('❌ Nenhum campo mapeado — verifique a configuração'); return; }
