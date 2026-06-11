@@ -2375,31 +2375,27 @@ function toggleInstallmentGroup(id) {
 
 // ── Gastos Fixos / Ganhos Fixos (vigência) ──
 function renderVigenciaCards(tableId, rows, cat) {
-  const cm     = S.colMap[tableId] || {};
-  const accent = ITEMS_ACCENT[cat];
-  const now    = new Date();
-  const fmtMes = d => d ? `${MONTHS_PT[d.getMonth()].slice(0,3)}/${d.getFullYear()}` : '∞';
-  // Ganhos Fixos usa o botão "Receber"; Gastos Fixos (e Parcelados) usam "Pagar"
-  const actionKw   = cat === 'fixedincome' ? ['receber','registrar recebimento','marcar recebimento','botao receber'] : ['pagar','registrar pagamento','marcar pagamento','botao pagar','pagar agora'];
-  const actionLbl  = cat === 'fixedincome' ? '💰 Receber' : '💸 Pagar';
+  const cm       = S.colMap[tableId] || {};
+  const accent   = ITEMS_ACCENT[cat];
+  const now      = new Date();
+  const fmtMes   = d => d ? `${MONTHS_PT[d.getMonth()].slice(0,3)}/${d.getFullYear()}` : '∞';
+  const actionKw  = cat === 'fixedincome'
+    ? ['receber','registrar recebimento','marcar recebimento','botao receber']
+    : ['pagar','registrar pagamento','marcar pagamento','botao pagar','pagar agora'];
+  const actionLbl = cat === 'fixedincome' ? '💰 Receber' : '💸 Pagar';
+  const paidLbl   = cat === 'fixedincome' ? '✅ Recebido' : '✅ Pago';
   const colPagar   = detectCol(tableId, actionKw);
   const pagarColId = colPagar ? colId(tableId, colPagar) : null;
 
-  const sorted = [...rows].sort((a, b) => {
-    const get  = row => ({
-      startDate: parseDate(extractValue(row.values?.[cm.startDate])),
-      endDate:   parseDate(extractValue(row.values?.[cm.endDate])),
-      payDay:    parseDate(extractValue(row.values?.[cm.date]))?.getDate() ?? 99
-    });
-    const ga = get(a), gb = get(b);
-    const actA = isActiveInMonth(ga, now.getFullYear(), now.getMonth()) ? 0 : 1;
-    const actB = isActiveInMonth(gb, now.getFullYear(), now.getMonth()) ? 0 : 1;
-    if (actA !== actB) return actA - actB;
-    // Dentro do mesmo grupo (ativo/inativo), ordena pelo dia do mês de pagamento
-    return ga.payDay - gb.payDay;
-  });
+  // "Pago este mês" = ativo mas com data de vencimento já adiantada para mês seguinte
+  // (a automação do Coda avança a data +1 mês após o pagamento)
+  const isPaidThisMonth = dateVal => {
+    if (!dateVal) return false;
+    return dateVal.getFullYear() > now.getFullYear() ||
+           (dateVal.getFullYear() === now.getFullYear() && dateVal.getMonth() > now.getMonth());
+  };
 
-  const cards = sorted.map((row, idx) => {
+  const mapped = rows.map(row => {
     const get       = col => col ? extractValue(row.values?.[col]) : null;
     const name      = row.name || get(cm.description) || '—';
     const catVal    = get(cm.category) || '';
@@ -2408,37 +2404,91 @@ function renderVigenciaCards(tableId, rows, cat) {
     const startDate = parseDate(get(cm.startDate));
     const endDate   = parseDate(get(cm.endDate));
     const active    = isActiveInMonth({ startDate, endDate }, now.getFullYear(), now.getMonth());
-    const payDay    = dateVal ? `dia ${dateVal.getDate()}` : '—';
+    const paid      = active && isPaidThisMonth(dateVal);
+    const payDay    = dateVal ? dateVal.getDate() : null;
+    return { name, catVal, amount, dateVal, startDate, endDate, active, paid, payDay, id: row.id };
+  });
 
-    const badge = `<span style="font-size:10px;padding:2px 8px;border-radius:100px;white-space:nowrap;
-      background:${active ? (cat==='fixed' ? 'var(--orange-dim)' : 'rgba(6,182,212,.12)') : 'rgba(148,163,184,.1)'};
-      color:${active ? accent : 'var(--text2)'};font-weight:600">${active ? 'Ativo' : 'Inativo'}</span>`;
+  // Três grupos: pendente, pago este mês, inativo
+  const pending  = mapped.filter(i => i.active && !i.paid).sort((a,b) => (a.payDay||99)-(b.payDay||99));
+  const paid     = mapped.filter(i => i.active &&  i.paid).sort((a,b) => (a.payDay||99)-(b.payDay||99));
+  const inactive = mapped.filter(i => !i.active).sort((a,b) => a.name.localeCompare(b.name,'pt'));
+
+  const renderCard = (item, state, animIdx) => {
+    const { name, catVal, amount, dateVal, startDate, endDate, payDay } = item;
+    const isDone     = state === 'paid';
+    const isInactive = state === 'inactive';
+    const opacity    = isInactive ? 'opacity:.5;' : isDone ? 'opacity:.75;' : '';
+    const payDayStr  = payDay ? `dia ${payDay}` : '—';
+    const nextStr    = isDone && dateVal
+      ? `dia ${dateVal.getDate()} de ${MONTHS_PT[dateVal.getMonth()]}` : null;
+
+    const badge = isInactive
+      ? `<span style="font-size:10px;padding:2px 8px;border-radius:100px;white-space:nowrap;background:rgba(148,163,184,.1);color:var(--text2);font-weight:600">Inativo</span>`
+      : isDone
+        ? `<span style="font-size:10px;padding:2px 8px;border-radius:100px;white-space:nowrap;background:rgba(16,185,129,.14);color:var(--green);font-weight:600">${paidLbl}</span>`
+        : `<span style="font-size:10px;padding:2px 8px;border-radius:100px;white-space:nowrap;background:${cat==='fixed'?'var(--orange-dim)':'rgba(6,182,212,.12)'};color:${accent};font-weight:600">Ativo</span>`;
 
     return `
-      <div class="anim-card" style="animation-delay:${Math.min(idx,10)*35}ms;background:linear-gradient(160deg,var(--surface2) 0%,var(--surface2) 70%,var(--surface) 220%);border:1px solid var(--border);border-radius:var(--radius);
-                  overflow:hidden;${!active ? 'opacity:.55' : ''}">
-        <div style="height:3px;background:${active ? `linear-gradient(90deg,${accent},transparent 130%)` : 'var(--border)'};opacity:.85"></div>
+      <div class="anim-card" style="animation-delay:${Math.min(animIdx,10)*35}ms;background:linear-gradient(160deg,var(--surface2) 0%,var(--surface2) 70%,var(--surface) 220%);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;${opacity}">
+        <div style="height:3px;background:${isDone||isInactive?'var(--border)':`linear-gradient(90deg,${accent},transparent 130%)`};opacity:.85"></div>
         <div style="padding:18px 18px">
           <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:6px">
             <div style="font-size:17px;font-weight:700;line-height:1.3;flex:1">${esc(name)}</div>
             ${badge}
           </div>
           <div style="font-size:12px;color:var(--text2);margin-bottom:14px">
-            ${[catVal, `vence ${payDay}`, `${fmtMes(startDate)} → ${fmtMes(endDate)}`].filter(Boolean).join(' · ')}
+            ${[catVal,`vence ${payDayStr}`,`${fmtMes(startDate)} → ${fmtMes(endDate)}`].filter(Boolean).join(' · ')}
           </div>
           ${amount ? `<div style="margin-bottom:6px">
             <div style="font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px">Por mês</div>
-            <div style="font-size:22px;font-weight:700;color:${active ? accent : 'var(--text2)'}">${fmt(amount)}</div>
+            <div style="font-size:22px;font-weight:700;color:${isDone||isInactive?'var(--text2)':accent}">${fmt(amount)}</div>
           </div>` : ''}
-          ${(active && pagarColId) ? `<div style="margin-top:14px">
+          ${nextStr ? `<div style="margin-top:14px;padding:10px 14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);font-size:12px;color:var(--text2)">
+            📅 Próximo vencimento: <strong style="color:var(--text)">${nextStr}</strong>
+          </div>` : ''}
+          ${(!isDone && !isInactive && pagarColId) ? `<div style="margin-top:14px">
             <button class="pay-btn" style="width:100%"
-              onclick="event.stopPropagation();pagarItem('${tableId}','${row.id}','${pagarColId}',this)">${actionLbl}</button>
+              onclick="event.stopPropagation();pagarItem('${tableId}','${item.id}','${pagarColId}',this)">${actionLbl}</button>
           </div>` : ''}
         </div>
       </div>`;
-  }).join('');
+  };
 
-  return `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px">${cards}</div>`;
+  const emptyMsg = txt => `<p style="grid-column:1/-1;color:var(--text2);text-align:center;padding:24px;font-size:13px">${txt}</p>`;
+  const grid = html => `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px">${html}</div>`;
+  const pendingHtml  = pending.length  ? grid(pending.map((i,ix)  => renderCard(i,'pending',  ix)).join('')) : grid(emptyMsg('Tudo em dia! Nenhum item pendente. 🎉'));
+  const paidHtml     = paid.length     ? grid(paid.map((i,ix)     => renderCard(i,'paid',     ix)).join('')) : grid(emptyMsg('Nenhum item pago este mês ainda.'));
+  const inactiveHtml = inactive.length ? grid(inactive.map((i,ix) => renderCard(i,'inactive', ix)).join('')) : grid(emptyMsg('Nenhum item inativo.'));
+
+  const tid = `vig-${cat}`;
+  const tabs = `
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
+      <button id="${tid}-tab-pending"  class="inst-filter-tab active" onclick="switchVigFilter('${cat}','pending')">
+        ⏳ A ${cat==='fixedincome'?'receber':'pagar'} <span style="opacity:.7">(${pending.length})</span>
+      </button>
+      <button id="${tid}-tab-paid"     class="inst-filter-tab"        onclick="switchVigFilter('${cat}','paid')">
+        ✅ ${cat==='fixedincome'?'Recebido':'Pago'} este mês <span style="opacity:.7">(${paid.length})</span>
+      </button>
+      <button id="${tid}-tab-inactive" class="inst-filter-tab"        onclick="switchVigFilter('${cat}','inactive')">
+        ⛔ Inativos <span style="opacity:.7">(${inactive.length})</span>
+      </button>
+    </div>`;
+
+  return `${tabs}
+    <div id="${tid}-list-pending">${pendingHtml}</div>
+    <div id="${tid}-list-paid"    style="display:none">${paidHtml}</div>
+    <div id="${tid}-list-inactive" style="display:none">${inactiveHtml}</div>`;
+}
+
+function switchVigFilter(cat, filter) {
+  const tid = `vig-${cat}`;
+  ['pending','paid','inactive'].forEach(f => {
+    const tab  = document.getElementById(`${tid}-tab-${f}`);
+    const list = document.getElementById(`${tid}-list-${f}`);
+    if (tab)  tab.classList.toggle('active', f === filter);
+    if (list) list.style.display = f === filter ? '' : 'none';
+  });
 }
 
 // ── Entradas / Saídas Variáveis ──
