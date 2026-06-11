@@ -2239,28 +2239,23 @@ function renderVigenciaCards(tableId, rows, cat) {
   const cm     = S.colMap[tableId] || {};
   const accent = ITEMS_ACCENT[cat];
   const now    = new Date();
+  const y = now.getFullYear(), m = now.getMonth();
+  const currMonthStart = new Date(y, m, 1);
   const fmtMes = d => d ? `${MONTHS_PT[d.getMonth()].slice(0,3)}/${d.getFullYear()}` : '∞';
-  // Ganhos Fixos usa o botão "Receber"; Gastos Fixos (e Parcelados) usam "Pagar"
+
   const actionKw   = cat === 'fixedincome' ? ['receber','registrar recebimento','marcar recebimento','botao receber'] : ['pagar','registrar pagamento','marcar pagamento','botao pagar','pagar agora'];
   const actionLbl  = cat === 'fixedincome' ? '💰 Receber' : '💸 Pagar';
   const colPagar   = detectCol(tableId, actionKw);
   const pagarColId = colPagar ? colId(tableId, colPagar) : null;
 
-  const sorted = [...rows].sort((a, b) => {
-    const get  = row => ({
-      startDate: parseDate(extractValue(row.values?.[cm.startDate])),
-      endDate:   parseDate(extractValue(row.values?.[cm.endDate])),
-      payDay:    parseDate(extractValue(row.values?.[cm.date]))?.getDate() ?? 99
-    });
-    const ga = get(a), gb = get(b);
-    const actA = isActiveInMonth(ga, now.getFullYear(), now.getMonth()) ? 0 : 1;
-    const actB = isActiveInMonth(gb, now.getFullYear(), now.getMonth()) ? 0 : 1;
-    if (actA !== actB) return actA - actB;
-    // Dentro do mesmo grupo (ativo/inativo), ordena pelo dia do mês de pagamento
-    return ga.payDay - gb.payDay;
-  });
+  const colPagoBool = detectCol(tableId, ['pago?','pago este mes','pago no mes','recebido?','recebido este mes','quitado']);
+  const isPaidBool  = v => {
+    if (v === true) return true;
+    if (!v) return false;
+    return ['sim','true','pago','paga','quitado','recebido','yes','1','✓'].includes(norm(String(v)));
+  };
 
-  const cards = sorted.map((row, idx) => {
+  const enriched = rows.map(row => {
     const get       = col => col ? extractValue(row.values?.[col]) : null;
     const name      = row.name || get(cm.description) || '—';
     const catVal    = get(cm.category) || '';
@@ -2268,46 +2263,116 @@ function renderVigenciaCards(tableId, rows, cat) {
     const dateVal   = parseDate(get(cm.date));
     const startDate = parseDate(get(cm.startDate));
     const endDate   = parseDate(get(cm.endDate));
-    const active    = isActiveInMonth({ startDate, endDate }, now.getFullYear(), now.getMonth());
-    const payDay    = dateVal ? `dia ${dateVal.getDate()}` : '—';
+    const active    = isActiveInMonth({ startDate, endDate }, y, m);
+    const payDay    = dateVal ? dateVal.getDate() : 99;
 
-    const badge = `<span style="font-size:10px;padding:2px 8px;border-radius:100px;white-space:nowrap;
-      background:${active ? (cat==='fixed' ? 'var(--orange-dim)' : 'rgba(6,182,212,.12)') : 'rgba(148,163,184,.1)'};
-      color:${active ? accent : 'var(--text2)'};font-weight:600">${active ? 'Ativo' : 'Inativo'}</span>`;
+    let paidThisMonth = false;
+    if (colPagoBool) {
+      paidThisMonth = active && isPaidBool(get(colPagoBool));
+    } else if (active && dateVal) {
+      const dvMonth = new Date(dateVal.getFullYear(), dateVal.getMonth(), 1);
+      paidThisMonth = dvMonth > currMonthStart;
+    }
+
+    return { row, name, catVal, amount, dateVal, startDate, endDate, active, payDay, paidThisMonth };
+  });
+
+  const unpaid   = enriched.filter(e => e.active && !e.paidThisMonth).sort((a,b) => a.payDay - b.payDay);
+  const paid     = enriched.filter(e => e.active &&  e.paidThisMonth).sort((a,b) => a.payDay - b.payDay);
+  const inactive = enriched.filter(e => !e.active);
+
+  const buildCard = (e, idx, grp) => {
+    const { row, name, catVal, amount, dateVal, startDate, endDate } = e;
+    const isPaid = grp === 'paid';
+    const isInactive = grp === 'inactive';
+
+    let badgeBg, badgeColor, badgeText;
+    if (isPaid) {
+      badgeBg = 'rgba(16,185,129,.15)'; badgeColor = 'var(--green)'; badgeText = '✅ Pago';
+    } else if (isInactive) {
+      badgeBg = 'rgba(148,163,184,.1)'; badgeColor = 'var(--text2)'; badgeText = 'Inativo';
+    } else {
+      badgeBg = cat === 'fixed' ? 'var(--orange-dim)' : 'rgba(6,182,212,.12)';
+      badgeColor = accent; badgeText = 'A pagar';
+    }
+    const badge = `<span style="font-size:10px;padding:2px 8px;border-radius:100px;white-space:nowrap;background:${badgeBg};color:${badgeColor};font-weight:600">${badgeText}</span>`;
+
+    let payInfo;
+    if (isPaid && dateVal) {
+      payInfo = `<div>
+        <div style="font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px">Próximo</div>
+        <div style="font-size:13px;font-weight:600;color:var(--text2)">${MONTHS_PT[dateVal.getMonth()].slice(0,3)} — dia ${dateVal.getDate()}</div>
+      </div>`;
+    } else {
+      payInfo = `<div>
+        <div style="font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px">Vencimento</div>
+        <div style="font-size:14px;font-weight:600">${dateVal ? `dia ${dateVal.getDate()}` : '—'}</div>
+      </div>`;
+    }
+
+    const topColor = isPaid ? 'var(--green)' : isInactive ? 'var(--border)' : accent;
+    const opacity  = isInactive ? 'opacity:.55;' : isPaid ? 'opacity:.75;' : '';
 
     return `
-      <div class="anim-card" style="animation-delay:${Math.min(idx,10)*35}ms;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);
-                  overflow:hidden;${!active ? 'opacity:.55' : ''}">
-        <div style="height:3px;background:${active ? accent : 'var(--border)'}"></div>
+      <div class="anim-card" style="animation-delay:${Math.min(idx,10)*35}ms;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;${opacity}">
+        <div style="height:3px;background:${topColor}"></div>
         <div style="padding:14px 16px">
           <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:4px">
             <div style="font-size:14px;font-weight:700;line-height:1.3;flex:1">${esc(name)}</div>
             ${badge}
           </div>
-          ${catVal ? `<div style="font-size:11px;color:var(--text2);margin-bottom:12px">${esc(catVal)}</div>` : '<div style="margin-bottom:12px"></div>'}
+          ${catVal ? `<div style="font-size:11px;color:var(--text2);margin-bottom:10px">${esc(catVal)}</div>` : '<div style="margin-bottom:10px"></div>'}
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
             ${amount ? `<div>
               <div style="font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px">Por mês</div>
-              <div style="font-size:18px;font-weight:700;color:${active ? accent : 'var(--text2)'}">${fmt(amount)}</div>
+              <div style="font-size:18px;font-weight:700;color:${isPaid||isInactive?'var(--text2)':accent}">${fmt(amount)}</div>
             </div>` : ''}
-            <div>
-              <div style="font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px">Pagamento</div>
-              <div style="font-size:14px;font-weight:600">${payDay}</div>
-            </div>
+            ${payInfo}
             <div style="grid-column:1/-1">
               <div style="font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px">Vigência</div>
               <div style="font-size:12px">${fmtMes(startDate)} → ${fmtMes(endDate)}</div>
             </div>
           </div>
-          ${(active && pagarColId) ? `<div style="margin-top:12px">
+          ${(!isPaid && !isInactive && pagarColId) ? `<div style="margin-top:12px">
             <button class="pay-btn" style="width:100%;justify-content:center"
               onclick="event.stopPropagation();pagarItem('${tableId}','${row.id}','${pagarColId}',this)">${actionLbl}</button>
           </div>` : ''}
         </div>
       </div>`;
-  }).join('');
+  };
 
-  return `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px">${cards}</div>`;
+  const stagger = (list, grp) => list.map((e, i) => buildCard(e, i, grp)).join('');
+  const emptyMsg = txt => `<p style="grid-column:1/-1;color:var(--text2);text-align:center;padding:24px;font-size:13px">${txt}</p>`;
+
+  const unpaidHtml   = unpaid.length   ? stagger(unpaid,   'unpaid')   : emptyMsg('Tudo pago este mês! 🎉');
+  const paidHtml     = paid.length     ? stagger(paid,     'paid')     : emptyMsg('Nenhum pagamento registrado ainda.');
+  const inactiveHtml = inactive.length ? stagger(inactive, 'inactive') : emptyMsg('Nenhum item inativo.');
+
+  const uid = `vig-${cat}`;
+  return `
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
+      <button id="${uid}-tab-unpaid" class="inst-filter-tab active" onclick="switchVigFilter('${uid}','unpaid')">
+        🔴 A pagar <span style="opacity:.7">(${unpaid.length})</span>
+      </button>
+      <button id="${uid}-tab-paid" class="inst-filter-tab" onclick="switchVigFilter('${uid}','paid')">
+        ✅ Pago este mês <span style="opacity:.7">(${paid.length})</span>
+      </button>
+      <button id="${uid}-tab-inactive" class="inst-filter-tab" onclick="switchVigFilter('${uid}','inactive')">
+        ⏸️ Inativos <span style="opacity:.7">(${inactive.length})</span>
+      </button>
+    </div>
+    <div id="${uid}-list-unpaid"   class="inst-grid">${unpaidHtml}</div>
+    <div id="${uid}-list-paid"     class="inst-grid" style="display:none">${paidHtml}</div>
+    <div id="${uid}-list-inactive" class="inst-grid" style="display:none">${inactiveHtml}</div>`;
+}
+
+function switchVigFilter(uid, filter) {
+  ['unpaid','paid','inactive'].forEach(f => {
+    const list = document.getElementById(`${uid}-list-${f}`);
+    const tab  = document.getElementById(`${uid}-tab-${f}`);
+    if (list) list.style.display = f === filter ? 'grid' : 'none';
+    if (tab)  tab.classList.toggle('active', f === filter);
+  });
 }
 
 // ── Entradas / Saídas Variáveis ──
