@@ -1283,9 +1283,9 @@ function applyDateCutoff(data, cutoff) {
   // Apenas variáveis e parcelados têm data de transação relevante
   return {
     income:      filter(data.income),
-    fixedincome: filter(data.fixedincome), // data de recebimento importa
+    fixedincome: data.fixedincome, // vigência → não filtra por data (pagar avança a data p/ próx. mês)
     expense:     filter(data.expense),
-    fixed:       filter(data.fixed),       // corta por data de pagamento
+    fixed:       data.fixed,       // vigência → não filtra por data (pagar avança a data p/ próx. mês)
     installment: filter(data.installment),
   };
 }
