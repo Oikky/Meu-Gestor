@@ -1281,11 +1281,20 @@ function applyDateCutoff(data, cutoff) {
   const filter = arr => arr.filter(t => !t.date || t.date <= cutoff);
   // Vigência (startDate): ainda incluir — são compromissos mensais fixos
   // Apenas variáveis e parcelados têm data de transação relevante
+  // Para itens com vigência (fixed/fixedincome): incluir se sem data, se data ≤ hoje,
+  // OU se data está em mês futuro (significa que foi pago e o vencimento avançou).
+  const currMonthStart = new Date(cutoff.getFullYear(), cutoff.getMonth(), 1);
+  const filterFixed = arr => arr.filter(t => {
+    if (!t.date) return true;
+    const dvMonth = new Date(t.date.getFullYear(), t.date.getMonth(), 1);
+    if (dvMonth > currMonthStart) return true; // pago → data avançou p/ próx. mês
+    return t.date <= cutoff;                   // não pago → só se já passou hoje
+  });
   return {
     income:      filter(data.income),
-    fixedincome: data.fixedincome, // vigência → não filtra por data (pagar avança a data p/ próx. mês)
+    fixedincome: filterFixed(data.fixedincome),
     expense:     filter(data.expense),
-    fixed:       data.fixed,       // vigência → não filtra por data (pagar avança a data p/ próx. mês)
+    fixed:       filterFixed(data.fixed),
     installment: filter(data.installment),
   };
 }
