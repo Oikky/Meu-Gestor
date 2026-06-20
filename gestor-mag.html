@@ -866,6 +866,12 @@ main { padding: 24px; max-width: 1400px; margin: 0 auto; }
         <label>Novo valor (R$)</label>
         <input type="number" id="edit-value-input" step="0.01" min="0" style="font-size:16px;font-weight:700" onkeydown="if(event.key==='Enter')confirmarEditarValor()">
       </div>
+      <div id="edit-value-permanent-row" style="display:none;margin-top:12px;padding:10px 12px;background:var(--surface2);border-radius:8px;">
+        <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;font-size:12px;color:var(--text2);line-height:1.4">
+          <input type="checkbox" id="edit-value-permanent" style="margin-top:2px">
+          <span>Atualizar também o <strong>valor padrão</strong> (mudança permanente, vale pros próximos meses). Desmarcado, vale só para este lançamento — no próximo ciclo volta ao padrão.</span>
+        </label>
+      </div>
       <div style="display:flex;gap:8px;margin-top:18px">
         <button class="btn btn-primary" onclick="confirmarEditarValor()" style="flex:1">💾 Salvar</button>
         <button class="btn btn-secondary" onclick="closeEditValor()">Cancelar</button>
@@ -1048,7 +1054,10 @@ async function codaPushButton(tableId, rowId, columnIdOrName) {
 }
 
 // Dispara o botão "Pagar" de uma linha (registra o pagamento e avança a próxima data no Coda)
-async function pagarItem(tableId, rowId, btnColId, el) {
+// amtColId/padraoColId (opcionais): se a linha tiver coluna "Valor Padrão" separada do valor
+// lançado, restaura o valor para o padrão depois de confirmar o pagamento — assim uma edição
+// pontual feita no lápis (sem marcar "mudança permanente") não afeta os próximos meses.
+async function pagarItem(tableId, rowId, btnColId, el, amtColId, padraoColId) {
   if (!btnColId) { toast('❌ Botão de pagamento não encontrado nesta tabela.'); return; }
   if (el) { el.disabled = true; el.dataset.orig = el.innerHTML; el.innerHTML = '⏳ Processando…'; }
   try {
@@ -1058,6 +1067,21 @@ async function pagarItem(tableId, rowId, btnColId, el) {
     // aguarda um instante antes de recarregar para dar tempo da automação rodar.
     setTimeout(async () => {
       await fetchAll();
+      if (amtColId && padraoColId) {
+        try {
+          const row = (S.rawRows[tableId] || []).find(r => r.id === rowId);
+          const padraoColName = (S.allCols[tableId] || []).find(c => c.id === padraoColId)?.name;
+          const cm = S.colMap[tableId] || {};
+          if (row && padraoColName) {
+            const curVal    = parseBRL(extractValue(row.values?.[cm.amount]));
+            const padraoVal = parseBRL(extractValue(row.values?.[padraoColName]));
+            if (!isNaN(padraoVal) && Math.abs(curVal - padraoVal) > 0.001) {
+              await updateRowAmount(tableId, rowId, amtColId, padraoVal);
+              await fetchAll();
+            }
+          }
+        } catch (e) { /* restauração do padrão é best-effort; não bloqueia o fluxo principal */ }
+      }
       updateDashboard();
       if (currentItemsCat && document.getElementById('items-modal')?.style.display !== 'none') {
         renderItemCards(currentItemsCat);
@@ -1070,14 +1094,18 @@ async function pagarItem(tableId, rowId, btnColId, el) {
 }
 
 // ── Editar valor de item fixo (gasto/ganho) ──
-let _editValTarget = null; // { tableId, rowId, colIdOrName, name }
+let _editValTarget = null; // { tableId, rowId, colIdOrName, name, padraoColId }
 
-function abrirEditarValor(tableId, rowId, colIdOrName, currentAmount, name) {
+function abrirEditarValor(tableId, rowId, colIdOrName, currentAmount, name, padraoColId) {
   if (!colIdOrName) { toast('❌ Coluna de valor não encontrada nesta tabela.'); return; }
-  _editValTarget = { tableId, rowId, colIdOrName, name };
+  _editValTarget = { tableId, rowId, colIdOrName, name, padraoColId: padraoColId || null };
   document.getElementById('edit-value-name').textContent = name || '';
   const input = document.getElementById('edit-value-input');
   input.value = currentAmount ? currentAmount.toFixed(2) : '';
+  const permRow = document.getElementById('edit-value-permanent-row');
+  const permChk = document.getElementById('edit-value-permanent');
+  permChk.checked = false;
+  permRow.style.display = padraoColId ? 'block' : 'none';
   document.getElementById('edit-value-modal').style.display = 'flex';
   setTimeout(() => { input.focus(); input.select(); }, 50);
 }
@@ -1092,12 +1120,14 @@ async function confirmarEditarValor() {
   const input = document.getElementById('edit-value-input');
   const novoValor = parseFloat(input.value);
   if (isNaN(novoValor) || novoValor < 0) { toast('❌ Informe um valor válido'); return; }
-  const { tableId, rowId, colIdOrName } = _editValTarget;
+  const { tableId, rowId, colIdOrName, padraoColId } = _editValTarget;
+  const tornarPermanente = padraoColId && document.getElementById('edit-value-permanent').checked;
   const btn = document.querySelector('#edit-value-modal .btn-primary');
   if (btn) { btn.disabled = true; btn.textContent = 'Salvando…'; }
   try {
     await updateRowAmount(tableId, rowId, colIdOrName, novoValor);
-    toast('✅ Valor atualizado! Atualizando dados…');
+    if (tornarPermanente) await updateRowAmount(tableId, rowId, padraoColId, novoValor);
+    toast(tornarPermanente ? '✅ Valor e padrão atualizados! Atualizando dados…' : '✅ Valor atualizado! Atualizando dados…');
     closeEditValor();
     await fetchAll();
     updateDashboard();
@@ -2366,6 +2396,11 @@ function renderVigenciaCards(tableId, rows, cat) {
   const pagarColId = colPagar ? colId(tableId, colPagar) : null;
   const amtColId   = cm.amount ? colId(tableId, cm.amount) : null;
 
+  // Detecta coluna "Valor Padrão" (valor esperado p/ recorrência), se existir —
+  // separada do valor lançado/atual. Permite editar pontualmente sem afetar meses futuros.
+  const padraoColName = detectCol(tableId, ['valor padrao','valor de referencia','valor esperado','valor base']);
+  const padraoColId   = padraoColName ? colId(tableId, padraoColName) : null;
+
   const colPagoBool = detectCol(tableId, ['pago?','pago este mes','pago no mes','recebido?','recebido este mes','quitado']);
   const isPaidBool  = v => {
     if (v === true) return true;
@@ -2445,7 +2480,7 @@ function renderVigenciaCards(tableId, rows, cat) {
               <div style="font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px">Por mês</div>
               <div style="display:flex;align-items:center;gap:6px">
                 <div style="font-size:18px;font-weight:700;color:${isPaid||isInactive?'var(--text2)':accent}">${fmt(amount)}</div>
-                ${amtColId ? `<button title="Alterar valor" onclick="event.stopPropagation();abrirEditarValor('${tableId}','${row.id}','${amtColId}',${amount},'${esc(name).replace(/'/g,"\\'")}')" style="background:none;border:none;color:var(--text2);cursor:pointer;font-size:13px;padding:2px;line-height:1;opacity:.7" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=.7">✏️</button>` : ''}
+                ${amtColId ? `<button title="Alterar valor" onclick="event.stopPropagation();abrirEditarValor('${tableId}','${row.id}','${amtColId}',${amount},'${esc(name).replace(/'/g,"\\'")}','${padraoColId||''}')" style="background:none;border:none;color:var(--text2);cursor:pointer;font-size:13px;padding:2px;line-height:1;opacity:.7" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=.7">✏️</button>` : ''}
               </div>
             </div>` : ''}
             ${payInfo}
@@ -2456,7 +2491,7 @@ function renderVigenciaCards(tableId, rows, cat) {
           </div>
           ${(!isPaid && !isInactive && pagarColId) ? `<div style="margin-top:12px">
             <button class="pay-btn" style="width:100%;justify-content:center"
-              onclick="event.stopPropagation();pagarItem('${tableId}','${row.id}','${pagarColId}',this)">${actionLbl}</button>
+              onclick="event.stopPropagation();pagarItem('${tableId}','${row.id}','${pagarColId}',this,'${amtColId||''}','${padraoColId||''}')">${actionLbl}</button>
           </div>` : ''}
         </div>
       </div>`;
