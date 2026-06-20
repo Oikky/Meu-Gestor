@@ -701,7 +701,7 @@ main { padding: 24px; max-width: 1400px; margin: 0 auto; }
         <div class="kpi-value" id="kpi-bal-month">—</div>
         <div class="kpi-sub"   id="kpi-bal-month-sub">entradas − saídas</div>
       </div>
-      <div class="kpi-card bal-cum pos" id="kpi-balance-card">
+      <div class="kpi-card bal-cum pos clickable" id="kpi-balance-card" onclick="setChartView('cumulative')">
         <div class="kpi-label">✅ Saldo Acumulado</div>
         <div class="kpi-value" id="kpi-balance">—</div>
         <div class="kpi-sub" style="margin-top:4px">desde o início</div>
@@ -1216,10 +1216,22 @@ function inMonth(dateVal, y, m) {
   return d.getFullYear() === y && d.getMonth() === m;
 }
 
+// Detecta valor "verdadeiro" em colunas booleanas/texto de status (Pago?, Recebido?, etc.)
+function isPagoValue(v) {
+  if (v === true) return true;
+  if (!v) return false;
+  return ['sim','true','pago','paga','quitado','recebido','yes','1','✓'].includes(norm(String(v)));
+}
+
 function processRows(tableId, rows, category) {
   const cm = S.colMap[tableId] || {};
   // Normaliza o filtro: sem acento, sem espaços extras, minúsculas
   const filterCat = cm.filterCategory ? norm(cm.filterCategory.trim()) : null;
+
+  // Para itens com vigência (fixed/fixedincome): detecta coluna booleana "Pago?"/"Recebido?"
+  // para saber se já foi confirmado este mês (independe da data de vencimento).
+  const isVig = category === 'fixed' || category === 'fixedincome';
+  const colPagoBool = isVig ? detectCol(tableId, ['pago?','pago este mes','pago no mes','recebido?','recebido este mes','quitado']) : null;
 
   return rows
     .map(row => {
@@ -1233,7 +1245,8 @@ function processRows(tableId, rows, category) {
       const status    = get(cm.status);
       const startDate = cm.startDate ? parseDate(get(cm.startDate)) : null;
       const endDate   = cm.endDate   ? parseDate(get(cm.endDate))   : null;
-      return { amount, date, description: String(desc), category, cat: String(cat), status, startDate, endDate };
+      const paidFlag  = colPagoBool ? isPagoValue(get(colPagoBool)) : null;
+      return { amount, date, description: String(desc), category, cat: String(cat), status, startDate, endDate, vig: isVig, paidFlag };
     })
     .filter(t => {
       // Usa norm() para comparar sem acentos e sem distinção de maiúsculas
@@ -1362,14 +1375,18 @@ function findEarliestMonth() {
 function applyDateCutoff(data, cutoff) {
   if (!cutoff) return data;
   const filter = arr => arr.filter(t => !t.date || t.date <= cutoff);
-  // Para itens com vigência (fixed/fixedincome): incluir se sem data, se data ≤ hoje,
-  // OU se data está em mês futuro (significa que foi pago e o vencimento avançou).
+  // Itens com vigência (fixed/fixedincome) só entram no saldo se já foram CONFIRMADOS
+  // como pagos/recebidos este mês — ou via coluna booleana "Pago?"/"Recebido?",
+  // ou (se não houver essa coluna) porque o botão Pagar/Receber avançou a data de
+  // vencimento para o mês seguinte. Apenas ter a data de vencimento já passada NÃO
+  // basta — isso só indica que está em atraso, não que foi efetivamente pago.
   const currMonthStart = new Date(cutoff.getFullYear(), cutoff.getMonth(), 1);
   const filterFixed = arr => arr.filter(t => {
-    if (!t.date) return true;
+    if (!t.vig) return !t.date || t.date <= cutoff; // transação simples (ex: Dízimos)
+    if (t.paidFlag !== null && t.paidFlag !== undefined) return t.paidFlag; // coluna "Pago?" manda
+    if (!t.date) return false; // sem data e sem coluna "Pago?" → não há como confirmar, não conta
     const dvMonth = new Date(t.date.getFullYear(), t.date.getMonth(), 1);
-    if (dvMonth > currMonthStart) return true; // pago → data avançou p/ próx. mês
-    return t.date <= cutoff;                   // não pago → só se já passou hoje
+    return dvMonth > currMonthStart; // confirmado pago → data avançou p/ próx. mês
   });
   return {
     income:      filter(data.income),
@@ -1421,6 +1438,7 @@ function getHistory(months, offset) {
       installment: k.installment,
       out:         k.totalOut,
       balance:     k.balance,
+      cumBalance:  calcCumulativeBalance(d.getFullYear(), d.getMonth()),
       isFuture,
     };
   });
@@ -1444,7 +1462,7 @@ function renderKPIs(k, cumBalance) {
   // Saldo do mês
   const monPos = k.balance >= 0;
   const monCard = document.getElementById('kpi-bal-month-card');
-  monCard.className = `kpi-card bal-month clickable ${monPos ? 'pos' : 'neg'}`;
+  monCard.className = `kpi-card bal-month clickable ${monPos ? 'pos' : 'neg'}${S.chartView === 'balance' ? ' kpi-active' : ''}`;
   document.getElementById('kpi-bal-month').textContent    = fmt(k.balance);
   document.getElementById('kpi-bal-month-sub').textContent =
     `${fmt(k.totalIncome)} ent. · ${fmt(k.totalOut)} saída`;
@@ -1452,7 +1470,7 @@ function renderKPIs(k, cumBalance) {
   // Saldo acumulado
   const cumPos = cumBalance >= 0;
   const cumCard = document.getElementById('kpi-balance-card');
-  cumCard.className = `kpi-card bal-cum ${cumPos ? 'pos' : 'neg'}`;
+  cumCard.className = `kpi-card bal-cum clickable ${cumPos ? 'pos' : 'neg'}${S.chartView === 'cumulative' ? ' kpi-active' : ''}`;
   document.getElementById('kpi-balance').textContent = fmt(cumBalance);
   const pct = cumBalance > 0 ? Math.min(100, (cumBalance / (cumBalance + k.totalOut || 1)) * 100) : 0;
   const bar  = document.getElementById('bal-bar');
@@ -1512,7 +1530,8 @@ const CAT_CFG = {
   expense:     { label:'💸 Saídas Var.',    key:'expense',     bg:'rgba(239,68,68,0.8)',   border:'#ef4444' },
   fixed:       { label:'🔒 Gastos Fixos',   key:'fixed',       bg:'rgba(245,158,11,0.8)', border:'#f59e0b' },
   installment: { label:'📦 Parcelados',     key:'installment', bg:'rgba(139,92,246,0.8)', border:'#8b5cf6' },
-  balance:     { label:'📅 Saldo Mensal',   key:'balance',     bg:'rgba(96,165,250,0.8)', border:'#60a5fa' },
+  balance:     { label:'📅 Saldo Mensal',   key:'balance',     bg:'rgba(96,165,250,0.8)', border:'#60a5fa', excludeAll:true },
+  cumulative:  { label:'✅ Saldo Acumulado', key:'cumBalance',  bg:'rgba(34,197,94,0.8)',  border:'#22c55e', excludeAll:true, lineChart:true },
 };
 
 function fadeBg(base, isFuture) {
@@ -1530,7 +1549,7 @@ function renderMainChart(history) {
   if (view === 'all') {
     // Grouped: all 5 categories
     datasets = Object.values(CAT_CFG)
-      .filter(c => c.key !== 'balance')
+      .filter(c => !c.excludeAll)
       .map(c => ({
         label: c.label,
         data:  history.map(h => h[c.key]),
@@ -1541,7 +1560,13 @@ function renderMainChart(history) {
   } else {
     // Single category
     const c = CAT_CFG[view];
-    datasets = [{
+    datasets = [c.lineChart ? {
+      label: c.label,
+      data:  history.map(h => h[c.key]),
+      backgroundColor: c.bg,
+      borderColor: c.border, borderWidth: 2, fill: true, tension: 0.25,
+      pointBackgroundColor: c.border, pointRadius: 4,
+    } : {
       label: c.label,
       data:  history.map(h => h[c.key]),
       backgroundColor: history.map(h => fadeBg(c.bg, h.isFuture)),
@@ -1550,8 +1575,9 @@ function renderMainChart(history) {
     legendShow = false;
   }
 
+  const chartType = (view !== 'all' && CAT_CFG[view]?.lineChart) ? 'line' : 'bar';
   S.charts.main = new Chart(ctx, {
-    type: 'bar',
+    type: chartType,
     data: { labels, datasets },
     options: {
       ...CHART_OPTS_BASE,
@@ -1667,7 +1693,8 @@ function setChartView(view) {
 
   // Highlight active KPI card
   document.querySelectorAll('.kpi-card.clickable').forEach(el => el.classList.remove('kpi-active'));
-  const activeCard = document.getElementById(`kpi-card-${view}`);
+  const KPI_CARD_ID = { balance: 'kpi-bal-month-card', cumulative: 'kpi-balance-card' };
+  const activeCard = document.getElementById(KPI_CARD_ID[view] || `kpi-card-${view}`);
   if (activeCard) activeCard.classList.add('kpi-active');
 
   // Update chart title and back button
