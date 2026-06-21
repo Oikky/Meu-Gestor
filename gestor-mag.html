@@ -968,6 +968,7 @@ const S = {
   lastUpdated: null,
   chartRange:  { months: 6, offset: 0 },
   chartView:   'all', // 'all' | 'income' | 'fixedincome' | 'expense' | 'fixed' | 'installment' | 'balance'
+  historico:   { fixedincome: {}, fixed: {} }, // rowId do item recorrente → [{date, amount}] lançado de fato na Tabela de Ganhos/Gastos
   sim:         { items: [] }, // itens hipotéticos (simulação local, não salva no Coda)
 };
 
@@ -1388,6 +1389,18 @@ function parseDate(v) {
   return isNaN(d.getTime()) ? null : d;
 }
 
+// Extrai { rowId, name } de uma célula de referência a outra linha (lookup/relation).
+// Diferente de extractValue (que descarta o rowId e fica só com o nome), aqui
+// precisamos do rowId pra casar com precisão o lançamento histórico com o item de origem.
+function extractRowRef(raw) {
+  if (raw === null || raw === undefined) return null;
+  if (Array.isArray(raw)) raw = raw[0];
+  if (raw && typeof raw === 'object' && raw['@type'] === 'Row') {
+    return { rowId: raw.rowId || null, name: raw.name ?? null };
+  }
+  return null;
+}
+
 function inMonth(dateVal, y, m) {
   const d = parseDate(dateVal);
   if (!d) return true; // no date → always include (e.g. fixed costs)
@@ -1451,6 +1464,46 @@ function isActiveInMonth(t, y, m) {
   return true;
 }
 
+// Monta o índice de histórico real de pagamentos de itens recorrentes (Gastos Fixos/Ganhos Fixos),
+// lendo as linhas que a automação do Coda já registra na Tabela de Ganhos/Gastos a cada pagamento
+// (essas linhas têm uma coluna de referência apontando de volta pro item recorrente de origem).
+// Resultado: { fixedincome: { [rowId do item]: [{date,amount}] }, fixed: { [rowId do item]: [{date,amount}] } }
+function buildHistoricoIndex() {
+  const idx = { fixedincome: {}, fixed: {} };
+
+  const sources = [
+    { cat: 'fixedincome', ledgerTableId: S.mapping['income'],  refKeywords: ['ganhos fixos', 'ganho fixo'] },
+    { cat: 'fixed',       ledgerTableId: S.mapping['expense'], refKeywords: ['gastos fixos', 'gasto fixo'] },
+  ];
+
+  for (const { cat, ledgerTableId, refKeywords } of sources) {
+    if (!ledgerTableId) continue;
+    const cm = S.colMap[ledgerTableId] || {};
+    if (!cm.amount || !cm.date) continue;
+    const refColName = detectCol(ledgerTableId, refKeywords);
+    if (!refColName) continue; // sem coluna de referência: não dá pra casar com o item de origem
+
+    for (const row of S.rawRows[ledgerTableId] || []) {
+      const ref = extractRowRef(row.values?.[refColName]);
+      if (!ref || !ref.rowId) continue;
+      const date   = parseDate(extractValue(row.values?.[cm.date]));
+      const amount = Math.abs(parseBRL(extractValue(row.values?.[cm.amount])));
+      if (!date) continue;
+      (idx[cat][ref.rowId] ||= []).push({ date, amount });
+    }
+  }
+  return idx;
+}
+
+// Busca, no histórico real, o valor efetivamente lançado pra um item recorrente em um mês específico.
+// Retorna null se não houver registro (ex: mês futuro ainda não pago).
+function buscarValorHistorico(cat, rowId, y, m) {
+  const lista = S.historico?.[cat]?.[rowId];
+  if (!lista || !lista.length) return null;
+  const hit = lista.find(h => h.date.getFullYear() === y && h.date.getMonth() === m);
+  return hit || null;
+}
+
 function getMonthData(y, m) {
   const out = { income:[], fixedincome:[], expense:[], fixed:[], installment:[] };
   for (const [cat, tableId] of Object.entries(S.mapping)) {
@@ -1462,13 +1515,17 @@ function getMonthData(y, m) {
     if (cm.startDate) {
       // Tem vigência definida: filtra por período de atividade (início ≤ mês ≤ fim)
       out[cat] = txns.filter(t => isActiveInMonth(t, y, m)).map(t => {
-        // O valor lançado (t.amount) pode ter sido editado pontualmente para o
-        // vencimento atual. Esse valor só deve valer para o mês do vencimento
-        // em si — qualquer outro mês (passado ou projeção futura) usa o padrão.
-        if (t.padraoAmount == null || !t.date) return t;
+        if (!t.date) return t;
         const dueMonth = t.date.getFullYear() * 12 + t.date.getMonth();
         const thisMonth = y * 12 + m;
-        return dueMonth === thisMonth ? t : { ...t, amount: t.padraoAmount };
+        // Mês do vencimento atual da linha: usa o valor lançado nela mesma.
+        if (dueMonth === thisMonth) return t;
+        // Qualquer outro mês: busca o valor real que foi de fato pago/recebido naquele
+        // mês no histórico (Tabela de Ganhos/Gastos) — em vez de aproximar pelo padrão.
+        const real = buscarValorHistorico(cat, t.id, y, m);
+        if (real) return { ...t, amount: real.amount, displayDate: real.date };
+        // Sem registro real (ex: mês futuro, ainda não pago) → projeta com o valor padrão.
+        return (t.padraoAmount != null) ? { ...t, amount: t.padraoAmount } : t;
       });
     } else if (cat === 'fixed') {
       // Fixo sem vigência: sempre inclui tudo (comportamento anterior)
@@ -2133,7 +2190,7 @@ function showBalanceDetail() {
       const prefix = t._side === 'in' ? '+' : '−';
       const dateStr = t._cat === 'fixed'
         ? '<span style="font-size:10px;color:var(--text2);font-style:italic">Recorrente</span>'
-        : (t.date ? t.date.toLocaleDateString('pt-BR') : '—');
+        : ((t.displayDate || t.date) ? (t.displayDate || t.date).toLocaleDateString('pt-BR') : '—');
 
       const isVigItem   = t._cat === 'fixed' || t._cat === 'fixedincome';
       const dueMonthIdx = t.date ? (t.date.getFullYear() * 12 + t.date.getMonth()) : null;
@@ -3192,6 +3249,7 @@ async function fetchAll() {
       S.rawRows[tid] = [];
     }
   }
+  S.historico = buildHistoricoIndex();
   S.lastUpdated = new Date();
   const txt = `atualizado às ${S.lastUpdated.toLocaleTimeString('pt-BR')}`;
   const el = document.getElementById('last-updated');
