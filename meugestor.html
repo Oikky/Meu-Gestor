@@ -1266,6 +1266,9 @@ function processRows(tableId, rows, category) {
   // para saber se já foi confirmado este mês (independe da data de vencimento).
   const isVig = category === 'fixed' || category === 'fixedincome';
   const colPagoBool = isVig ? detectCol(tableId, ['pago?','pago este mes','pago no mes','recebido?','recebido este mes','quitado']) : null;
+  // Coluna "Valor Padrão" (valor esperado/recorrente), separada do valor lançado —
+  // usada pra projetar meses que não são o ciclo de vencimento atual (ver getMonthData).
+  const colPadrao   = isVig ? detectCol(tableId, ['valor padrao','valor de referencia','valor esperado','valor base']) : null;
 
   return rows
     .map(row => {
@@ -1280,7 +1283,9 @@ function processRows(tableId, rows, category) {
       const startDate = cm.startDate ? parseDate(get(cm.startDate)) : null;
       const endDate   = cm.endDate   ? parseDate(get(cm.endDate))   : null;
       const paidFlag  = colPagoBool ? isPagoValue(get(colPagoBool)) : null;
-      return { amount, date, description: String(desc), category, cat: String(cat), status, startDate, endDate, vig: isVig, paidFlag };
+      const padraoRaw = colPadrao ? get(colPadrao) : null;
+      const padraoAmount = (padraoRaw !== null && padraoRaw !== undefined && padraoRaw !== '') ? Math.abs(parseBRL(padraoRaw)) : null;
+      return { amount, date, description: String(desc), category, cat: String(cat), status, startDate, endDate, vig: isVig, paidFlag, padraoAmount };
     })
     .filter(t => {
       // Usa norm() para comparar sem acentos e sem distinção de maiúsculas
@@ -1309,7 +1314,15 @@ function getMonthData(y, m) {
 
     if (cm.startDate) {
       // Tem vigência definida: filtra por período de atividade (início ≤ mês ≤ fim)
-      out[cat] = txns.filter(t => isActiveInMonth(t, y, m));
+      out[cat] = txns.filter(t => isActiveInMonth(t, y, m)).map(t => {
+        // O valor lançado (t.amount) pode ter sido editado pontualmente para o
+        // vencimento atual. Esse valor só deve valer para o mês do vencimento
+        // em si — qualquer outro mês (passado ou projeção futura) usa o padrão.
+        if (t.padraoAmount == null || !t.date) return t;
+        const dueMonth = t.date.getFullYear() * 12 + t.date.getMonth();
+        const thisMonth = y * 12 + m;
+        return dueMonth === thisMonth ? t : { ...t, amount: t.padraoAmount };
+      });
     } else if (cat === 'fixed') {
       // Fixo sem vigência: sempre inclui tudo (comportamento anterior)
       out[cat] = txns;
