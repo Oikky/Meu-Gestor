@@ -880,6 +880,28 @@ main { padding: 24px; max-width: 1400px; margin: 0 auto; }
   </div>
 </div>
 
+<!-- Confirm Payment Modal -->
+<div id="confirm-pay-modal" class="modal-overlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.78); z-index:260; align-items:flex-start; justify-content:center; padding:24px 16px; overflow-y:auto;">
+  <div class="modal-card" style="background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); width:100%; max-width:380px;">
+    <div style="display:flex; justify-content:space-between; align-items:center; padding:18px 24px; border-bottom:1px solid var(--border);">
+      <h3 id="confirm-pay-title" style="font-size:16px">💸 Confirmar pagamento</h3>
+      <button onclick="closeConfirmarPagamento()" style="background:none;border:none;color:var(--text2);font-size:20px;cursor:pointer">✕</button>
+    </div>
+    <div style="padding:20px 24px;">
+      <div id="confirm-pay-name" style="font-size:13px;color:var(--text2);margin-bottom:14px"></div>
+      <div class="setup-group">
+        <label>Valor a considerar (R$)</label>
+        <input type="number" id="confirm-pay-input" step="0.01" min="0" style="font-size:16px;font-weight:700" onkeydown="if(event.key==='Enter')confirmarPagamento()">
+      </div>
+      <div style="margin-top:10px;font-size:11px;color:var(--text2);line-height:1.4">Vem preenchido com o valor padrão. Se mudar, vale só para este mês — nos próximos volta ao padrão.</div>
+      <div style="display:flex;gap:8px;margin-top:18px">
+        <button class="btn btn-primary" onclick="confirmarPagamento()" style="flex:1">💸 Confirmar pagamento</button>
+        <button class="btn btn-secondary" onclick="closeConfirmarPagamento()">Cancelar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Sim Modal -->
 <div id="sim-modal" class="modal-overlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.78); z-index:250; align-items:flex-start; justify-content:center; padding:24px 16px; overflow-y:auto;">
   <div class="modal-card" style="background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); width:100%; max-width:500px;">
@@ -1033,6 +1055,34 @@ async function updateRowAmount(tableId, rowId, colIdOrName, newAmount) {
   });
 }
 
+// Atualizações no Coda são assíncronas (a PUT retorna antes da célula realmente
+// mudar no doc). Espera a mutação terminar via /mutationStatus antes de seguir —
+// evita disparar o botão "Pagar" antes do valor novo estar realmente gravado.
+async function waitForMutation(requestId, maxWaitMs = 8000, intervalMs = 500) {
+  if (!requestId) return;
+  const start = Date.now();
+  while (Date.now() - start < maxWaitMs) {
+    try {
+      const status = await codaFetch(`/docs/${DOC_ID}/mutationStatus/${encodeURIComponent(requestId)}`);
+      if (status.completed) return;
+    } catch (e) { /* tenta de novo */ }
+    await new Promise(r => setTimeout(r, intervalMs));
+  }
+}
+
+// Exclui uma linha (registro) de uma tabela do Coda
+async function codaDeleteRow(tableId, rowId) {
+  const r = await fetch(`${BASE}/docs/${DOC_ID}/tables/${tableId}/rows/${encodeURIComponent(rowId)}`, {
+    method: 'DELETE',
+    headers: { 'Authorization': `Bearer ${API_KEY}` }
+  });
+  if (!r.ok) {
+    const t = await r.text().catch(() => '');
+    throw new Error(`HTTP ${r.status}: ${t.slice(0, 300)}`);
+  }
+  return r.json();
+}
+
 // Busca o ID da coluna pelo nome (para usar no POST /rows)
 function colId(tableId, colName) {
   if (!colName) return null;
@@ -1053,43 +1103,115 @@ async function codaPushButton(tableId, rowId, columnIdOrName) {
   return r.json();
 }
 
+// Espera a automação do Coda (disparada pelo botão Pagar/Receber) terminar de
+// registrar o pagamento e avançar a data de vencimento. Detecta isso checando se
+// a data mudou em relação ao valor original — sinal confiável de que a automação
+// já rodou. Sem isso, restaurar o valor padrão cedo demais faz a automação copiar
+// o valor errado pra tabela principal (a "corrida" que fazia o valor editado
+// "voltar" pro padrão antes de ser considerado no pagamento).
+async function waitForAutomation(tableId, rowId, dateCol, originalDateRaw, maxWaitMs = 12000, intervalMs = 1200) {
+  if (!dateCol) { await new Promise(r => setTimeout(r, 2000)); return false; }
+  const start = Date.now();
+  while (Date.now() - start < maxWaitMs) {
+    await new Promise(r => setTimeout(r, intervalMs));
+    await fetchAll();
+    const row = (S.rawRows[tableId] || []).find(r => r.id === rowId);
+    if (!row) return true;
+    const curDateRaw = extractValue(row.values?.[dateCol]);
+    if (curDateRaw !== originalDateRaw) return true;
+  }
+  return false;
+}
+
 // Dispara o botão "Pagar" de uma linha (registra o pagamento e avança a próxima data no Coda)
 // amtColId/padraoColId (opcionais): se a linha tiver coluna "Valor Padrão" separada do valor
 // lançado, restaura o valor para o padrão depois de confirmar o pagamento — assim uma edição
-// pontual feita no lápis (sem marcar "mudança permanente") não afeta os próximos meses.
+// pontual feita no lápis ou na tela de confirmação (sem marcar "mudança permanente") não afeta
+// os próximos meses.
 async function pagarItem(tableId, rowId, btnColId, el, amtColId, padraoColId) {
   if (!btnColId) { toast('❌ Botão de pagamento não encontrado nesta tabela.'); return; }
   if (el) { el.disabled = true; el.dataset.orig = el.innerHTML; el.innerHTML = '⏳ Processando…'; }
+  const cm = S.colMap[tableId] || {};
+  const rowBefore = (S.rawRows[tableId] || []).find(r => r.id === rowId);
+  const originalDateRaw = cm.date ? extractValue(rowBefore?.values?.[cm.date]) : null;
   try {
     await codaPushButton(tableId, rowId, btnColId);
     toast('✅ Pagamento registrado! Atualizando dados…');
-    // O botão do Coda dispara uma automação (registra o gasto e avança a data) —
-    // aguarda um instante antes de recarregar para dar tempo da automação rodar.
-    setTimeout(async () => {
-      await fetchAll();
-      if (amtColId && padraoColId) {
-        try {
-          const row = (S.rawRows[tableId] || []).find(r => r.id === rowId);
-          const padraoColName = (S.allCols[tableId] || []).find(c => c.id === padraoColId)?.name;
-          const cm = S.colMap[tableId] || {};
-          if (row && padraoColName) {
-            const curVal    = parseBRL(extractValue(row.values?.[cm.amount]));
-            const padraoVal = parseBRL(extractValue(row.values?.[padraoColName]));
-            if (!isNaN(padraoVal) && Math.abs(curVal - padraoVal) > 0.001) {
-              await updateRowAmount(tableId, rowId, amtColId, padraoVal);
-              await fetchAll();
-            }
+    // Espera a automação do Coda terminar (data avançar) antes de tocar no valor de novo.
+    await waitForAutomation(tableId, rowId, cm.date, originalDateRaw);
+    await fetchAll();
+    if (amtColId && padraoColId) {
+      try {
+        const row = (S.rawRows[tableId] || []).find(r => r.id === rowId);
+        const padraoColName = (S.allCols[tableId] || []).find(c => c.id === padraoColId)?.name;
+        if (row && padraoColName) {
+          const curVal    = parseBRL(extractValue(row.values?.[cm.amount]));
+          const padraoVal = parseBRL(extractValue(row.values?.[padraoColName]));
+          if (!isNaN(padraoVal) && Math.abs(curVal - padraoVal) > 0.001) {
+            await updateRowAmount(tableId, rowId, amtColId, padraoVal);
+            await fetchAll();
           }
-        } catch (e) { /* restauração do padrão é best-effort; não bloqueia o fluxo principal */ }
-      }
-      updateDashboard();
-      if (currentItemsCat && document.getElementById('items-modal')?.style.display !== 'none') {
-        renderItemCards(currentItemsCat);
-      }
-    }, 2000);
+        }
+      } catch (e) { /* restauração do padrão é best-effort; não bloqueia o fluxo principal */ }
+    }
+    updateDashboard();
+    if (currentItemsCat && document.getElementById('items-modal')?.style.display !== 'none') {
+      renderItemCards(currentItemsCat);
+    }
+    if (document.getElementById('bal-detail-modal')?.style.display !== 'none') {
+      showBalanceDetail();
+    }
   } catch (e) {
     toast(`❌ Erro ao pagar: ${e.message}`);
     if (el) { el.disabled = false; el.innerHTML = el.dataset.orig || '💸 Pagar'; }
+  }
+}
+
+// ── Confirmar valor antes de pagar/receber ──
+// Tela exibida sempre antes de registrar um pagamento/recebimento: vem preenchida
+// com o valor padrão (editável). Garante (via waitForMutation) que o valor escolhido
+// aqui já está gravado no Coda ANTES de disparar o botão Pagar — assim a automação
+// que registra o pagamento na tabela principal usa o valor certo, não o padrão.
+let _payTarget = null; // { tableId, rowId, btnColId, el, amtColId, padraoColId, cat }
+
+function abrirConfirmarPagamento(tableId, rowId, btnColId, el, amtColId, padraoColId, valorSugerido, name, cat) {
+  if (!btnColId) { toast('❌ Botão de pagamento não encontrado nesta tabela.'); return; }
+  _payTarget = { tableId, rowId, btnColId, el, amtColId: amtColId || null, padraoColId: padraoColId || null, cat };
+  const isReceb = cat === 'fixedincome';
+  document.getElementById('confirm-pay-name').textContent = name || '';
+  document.getElementById('confirm-pay-title').textContent = isReceb ? '💰 Confirmar recebimento' : '💸 Confirmar pagamento';
+  document.querySelector('#confirm-pay-modal .btn-primary').textContent = isReceb ? '💰 Confirmar recebimento' : '💸 Confirmar pagamento';
+  const input = document.getElementById('confirm-pay-input');
+  input.value = (valorSugerido !== null && valorSugerido !== undefined && !isNaN(valorSugerido)) ? Number(valorSugerido).toFixed(2) : '';
+  document.getElementById('confirm-pay-modal').style.display = 'flex';
+  setTimeout(() => { input.focus(); input.select(); }, 50);
+}
+
+function closeConfirmarPagamento() {
+  document.getElementById('confirm-pay-modal').style.display = 'none';
+  _payTarget = null;
+}
+
+async function confirmarPagamento() {
+  if (!_payTarget) return;
+  const input = document.getElementById('confirm-pay-input');
+  const valor = parseFloat(input.value);
+  if (isNaN(valor) || valor < 0) { toast('❌ Informe um valor válido'); return; }
+  const { tableId, rowId, btnColId, el, amtColId, padraoColId, cat } = _payTarget;
+  const isReceb = cat === 'fixedincome';
+  const btn = document.querySelector('#confirm-pay-modal .btn-primary');
+  if (btn) { btn.disabled = true; btn.textContent = 'Processando…'; }
+  try {
+    if (amtColId) {
+      const resp = await updateRowAmount(tableId, rowId, amtColId, valor);
+      await waitForMutation(resp?.requestId);
+    }
+    closeConfirmarPagamento();
+    await pagarItem(tableId, rowId, btnColId, el, amtColId, padraoColId);
+  } catch (e) {
+    toast(`❌ Erro ao confirmar ${isReceb ? 'recebimento' : 'pagamento'}: ${e.message}`);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = isReceb ? '💰 Confirmar recebimento' : '💸 Confirmar pagamento'; }
   }
 }
 
@@ -1138,10 +1260,40 @@ async function confirmarEditarValor() {
     if (currentItemsCat && document.getElementById('items-modal')?.style.display !== 'none') {
       renderItemCards(currentItemsCat);
     }
+    if (document.getElementById('bal-detail-modal')?.style.display !== 'none') {
+      showBalanceDetail();
+    }
   } catch (e) {
     toast(`❌ Erro ao atualizar valor: ${e.message}`);
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = '💾 Salvar'; }
+  }
+}
+
+// ── Excluir um registro (linha) ──
+// Para itens fixos/ganhos fixos (vigência): a linha é o próprio item recorrente
+// ("molde"), então excluir remove o item de todos os meses, não só deste.
+// Para entradas/saídas variáveis e parcelados: remove só este lançamento pontual.
+async function excluirRegistro(tableId, rowId, cat, descricao) {
+  if (!tableId || !rowId) { toast('❌ Não foi possível identificar este registro.'); return; }
+  const isVig = cat === 'fixed' || cat === 'fixedincome';
+  const aviso = isVig
+    ? `Excluir "${descricao}" vai remover este item fixo recorrente por completo (de todos os meses), não apenas deste mês. Continuar?`
+    : `Excluir o registro "${descricao}"? Essa ação não pode ser desfeita.`;
+  if (!confirm(aviso)) return;
+  try {
+    await codaDeleteRow(tableId, rowId);
+    toast('✅ Registro excluído! Atualizando dados…');
+    await fetchAll();
+    updateDashboard();
+    if (currentItemsCat && document.getElementById('items-modal')?.style.display !== 'none') {
+      renderItemCards(currentItemsCat);
+    }
+    if (document.getElementById('bal-detail-modal')?.style.display !== 'none') {
+      showBalanceDetail();
+    }
+  } catch (e) {
+    toast(`❌ Erro ao excluir registro: ${e.message}`);
   }
 }
 
@@ -1269,6 +1421,7 @@ function processRows(tableId, rows, category) {
   // Coluna "Valor Padrão" (valor esperado/recorrente), separada do valor lançado —
   // usada pra projetar meses que não são o ciclo de vencimento atual (ver getMonthData).
   const colPadrao   = isVig ? detectCol(tableId, ['valor padrao','valor de referencia','valor esperado','valor base']) : null;
+  const padraoColId = colPadrao ? colId(tableId, colPadrao) : null;
 
   return rows
     .map(row => {
@@ -1285,7 +1438,9 @@ function processRows(tableId, rows, category) {
       const paidFlag  = colPagoBool ? isPagoValue(get(colPagoBool)) : null;
       const padraoRaw = colPadrao ? get(colPadrao) : null;
       const padraoAmount = (padraoRaw !== null && padraoRaw !== undefined && padraoRaw !== '') ? Math.abs(parseBRL(padraoRaw)) : null;
-      return { amount, date, description: String(desc), category, cat: String(cat), status, startDate, endDate, vig: isVig, paidFlag, padraoAmount };
+      // id/tableId/amtCol: necessários para editar ou excluir este registro específico depois.
+      return { amount, date, description: String(desc), category, cat: String(cat), status, startDate, endDate, vig: isVig, paidFlag, padraoAmount,
+               id: row.id, tableId, amtCol: cm.amount, padraoColId };
     })
     .filter(t => {
       // Usa norm() para comparar sem acentos e sem distinção de maiúsculas
@@ -1954,9 +2109,9 @@ function showBalanceDetail() {
   const today    = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
   const earliest = findEarliestMonth();
   let running    = 0;
-  let html       = '';
+  const blocks   = []; // construído em ordem cronológica (p/ saldo acumulado), exibido invertido
 
-  // Iterate every month from earliest to now
+  // Itera cada mês do mais antigo até hoje (para o cálculo do acumulado estar correto)
   for (let d = new Date(earliest); d <= now; d = new Date(d.getFullYear(), d.getMonth() + 1, 1)) {
     const y = d.getFullYear(), m = d.getMonth();
     const isCurrent = y === now.getFullYear() && m === now.getMonth();
@@ -1969,8 +2124,9 @@ function showBalanceDetail() {
     const balPos  = k.balance >= 0;
     const runPos  = running >= 0;
     const sign    = k.balance >= 0 ? '+' : '';
+    const thisMonthIdx = y * 12 + m;
 
-    // Collect all transactions for this month
+    // Reúne todas as transações do mês, da mais recente para a mais antiga (hoje → trás)
     const allTxns = [
       ...data.income.map(t      => ({...t, _side:'in',  _cat:'income'})),
       ...data.fixedincome.map(t => ({...t, _side:'in',  _cat:'fixedincome'})),
@@ -1980,7 +2136,7 @@ function showBalanceDetail() {
     ].sort((a,b) => {
       if (!a.date && !b.date) return 0;
       if (!a.date) return 1; if (!b.date) return -1;
-      return a.date - b.date;
+      return b.date - a.date;
     });
 
     const rowsHtml = allTxns.map(t => {
@@ -1991,15 +2147,32 @@ function showBalanceDetail() {
       const dateStr = t._cat === 'fixed'
         ? '<span style="font-size:10px;color:var(--text2);font-style:italic">Recorrente</span>'
         : (t.date ? t.date.toLocaleDateString('pt-BR') : '—');
+
+      // Editar só é seguro quando o mês exibido é o ciclo de vencimento atual do item
+      // (fixo/ganho fixo é uma linha-molde só; editar fora do mês de vencimento mexeria
+      // no valor do próximo ciclo, não no mês que está sendo visto).
+      const isVigItem   = t._cat === 'fixed' || t._cat === 'fixedincome';
+      const dueMonthIdx = t.date ? (t.date.getFullYear() * 12 + t.date.getMonth()) : null;
+      const canEdit      = t.id && t.tableId && t.amtCol && (!isVigItem || dueMonthIdx === thisMonthIdx);
+      const nameAttr      = esc(t.description).replace(/'/g,"\\'");
+
+      const editBtn = canEdit
+        ? `<button title="Editar valor" onclick="abrirEditarValor('${t.tableId}','${t.id}','${t.amtCol}',${t.amount},'${nameAttr}','${t.padraoColId||''}')" style="background:none;border:none;color:var(--text2);cursor:pointer;font-size:13px;padding:2px;line-height:1;opacity:.7" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=.7">✏️</button>`
+        : '';
+      const delBtn = (t.id && t.tableId)
+        ? `<button title="Excluir registro" onclick="excluirRegistro('${t.tableId}','${t.id}','${t._cat}','${nameAttr}')" style="background:none;border:none;color:var(--text2);cursor:pointer;font-size:13px;padding:2px;line-height:1;opacity:.7" onmouseover="this.style.opacity=1;this.style.color='var(--red)'" onmouseout="this.style.opacity=.7;this.style.color='var(--text2)'">🗑️</button>`
+        : '';
+
       return `<tr style="border-bottom:1px solid var(--border)">
         <td style="padding:7px 12px;font-size:12px;color:var(--text2)">${dateStr}</td>
         <td style="padding:7px 12px;font-size:12px">${esc(t.description)}</td>
         <td style="padding:7px 12px"><span style="font-size:10px;padding:2px 6px;border-radius:100px;background:rgba(255,255,255,0.06);color:var(--text2)">${c?.label||t._cat}</span></td>
         <td style="padding:7px 12px;text-align:right;font-weight:600;color:${color};font-size:13px;white-space:nowrap">${prefix} ${fmt(t.amount)}</td>
+        <td style="padding:7px 8px;text-align:right;white-space:nowrap">${editBtn}${delBtn}</td>
       </tr>`;
     }).join('');
 
-    html += `
+    blocks.push(`
     <div style="margin-top:20px">
       <div style="display:flex;justify-content:space-between;align-items:baseline;padding:8px 0;border-bottom:1px solid var(--border);margin-bottom:4px">
         <div style="font-size:13px;font-weight:700">${MONTHS_PT[m]} ${y}${isNow ? ' <span style="font-size:10px;background:var(--blue);color:#fff;padding:1px 6px;border-radius:100px;vertical-align:middle">agora</span>' : ''}</div>
@@ -2012,13 +2185,14 @@ function showBalanceDetail() {
       <table style="width:100%;border-collapse:collapse">
         <tbody>${rowsHtml}</tbody>
       </table>` : `<div style="color:var(--text2);font-size:12px;padding:8px 0">Sem transações registradas.</div>`}
-    </div>`;
+    </div>`);
   }
 
   const totalPos = running >= 0;
   document.getElementById('bd-total').textContent = fmt(running);
   document.getElementById('bd-total').style.color = totalPos ? 'var(--green)' : 'var(--red)';
-  document.getElementById('bd-content').innerHTML = html;
+  // Exibe do mês atual para o mais antigo (hoje → trás); o acumulado foi calculado em ordem cronológica acima.
+  document.getElementById('bd-content').innerHTML = blocks.reverse().join('');
   document.getElementById('bal-detail-modal').style.display = 'flex';
 }
 
@@ -2432,6 +2606,7 @@ function renderVigenciaCards(tableId, rows, cat) {
     const name      = row.name || get(cm.description) || '—';
     const catVal    = get(cm.category) || '';
     const amount    = parseBRL(get(cm.amount));
+    const padraoAmount = padraoColName ? parseBRL(get(padraoColName)) : null;
     const dateVal   = parseDate(get(cm.date));
     const startDate = parseDate(get(cm.startDate));
     const endDate   = parseDate(get(cm.endDate));
@@ -2450,7 +2625,7 @@ function renderVigenciaCards(tableId, rows, cat) {
       paidThisMonth = dvMonth > currMonthStart;
     }
 
-    return { row, name, catVal, amount, dateVal, startDate, endDate, active, payDay, paidThisMonth };
+    return { row, name, catVal, amount, padraoAmount, dateVal, startDate, endDate, active, payDay, paidThisMonth };
   });
 
   // Separa em 3 grupos
@@ -2459,7 +2634,7 @@ function renderVigenciaCards(tableId, rows, cat) {
   const inactive = enriched.filter(e => !e.active);
 
   const buildCard = (e, idx, grp) => {
-    const { row, name, catVal, amount, dateVal, startDate, endDate, payDay, paidThisMonth } = e;
+    const { row, name, catVal, amount, padraoAmount, dateVal, startDate, endDate, payDay, paidThisMonth } = e;
     const isPaid = grp === 'paid';
     const isInactive = grp === 'inactive';
 
@@ -2517,7 +2692,7 @@ function renderVigenciaCards(tableId, rows, cat) {
           </div>
           ${(!isPaid && !isInactive && pagarColId) ? `<div style="margin-top:12px">
             <button class="pay-btn" style="width:100%;justify-content:center"
-              onclick="event.stopPropagation();pagarItem('${tableId}','${row.id}','${pagarColId}',this,'${amtColId||''}','${padraoColId||''}')">${actionLbl}</button>
+              onclick="event.stopPropagation();abrirConfirmarPagamento('${tableId}','${row.id}','${pagarColId}',this,'${amtColId||''}','${padraoColId||''}',${(padraoAmount!=null && !isNaN(padraoAmount)) ? padraoAmount : amount},'${esc(name).replace(/'/g,"\\'")}','${cat}')">${actionLbl}</button>
           </div>` : ''}
         </div>
       </div>`;
